@@ -75,7 +75,25 @@ pub fn find_pack_file(rel: &str) -> Option<std::path::PathBuf> {
         return None;
     }
     let decoded = percent_decode(rel);
+    // 一个形象包的文件只从同一个文件夹拿，不在两处之间东拿一个西拿一个
+    if let Some((name, rest)) = decoded.split_once('/') {
+        return pack_root(name).map(|d| d.join(rest)).filter(|p| p.is_file());
+    }
     pack_dirs().into_iter().map(|d| d.join(&decoded)).find(|p| p.is_file())
+}
+
+/// 形象包所在的文件夹。%APPDATA% 和程序旁边都有同名形象包时，用 pack.json 较新的那份
+/// （安装包里带的新版形象包不会被以前手动放进 %APPDATA% 的旧版挡住）
+pub fn pack_root(name: &str) -> Option<std::path::PathBuf> {
+    pack_dirs()
+        .into_iter()
+        .map(|d| d.join(name))
+        .filter_map(|d| {
+            let t = std::fs::metadata(d.join("pack.json")).and_then(|m| m.modified()).ok()?;
+            Some((t, d))
+        })
+        .max_by_key(|(t, _)| *t)
+        .map(|(_, d)| d)
 }
 
 fn percent_decode(s: &str) -> String {
@@ -122,7 +140,7 @@ pub fn log_packs() {
     if want == "placeholder" {
         return;
     }
-    match pack_dirs().into_iter().map(|d| d.join(&want)).find(|d| d.join("pack.json").is_file()) {
+    match pack_root(&want) {
         Some(d) => {
             let files: Vec<String> = std::fs::read_dir(&d)
                 .map(|rd| {
