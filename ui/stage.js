@@ -310,10 +310,15 @@ function idleLife(t, base) {
     return;
   }
   if (S.sleep || t < S.nextIdle) return;
+  // 等待机循环回到开头再切，姿势对得上；最多等 4 秒
+  if (!anim.atLoopStart() && t - S.nextIdle < 4000) return;
   S.nextIdle = t + nextIdleGap();
   const id = pickIdle(idleFor);
   if (!id) return;
-  anim.play(id, ANIM_CATALOG[id].loop ? { ms: 3000 + Math.random() * 2000 } : {});
+  // 间隔从小动作播完算起：小动作比间隔还长时也不会一个接一个
+  anim.play(id, ANIM_CATALOG[id].loop ? { ms: 3000 + Math.random() * 2000 } : {}).then(() => {
+    S.nextIdle = Math.max(S.nextIdle, now() + nextIdleGap());
+  });
 }
 
 /** 指着按钮时：每 3 秒回头看你一眼，8 秒你还没点就跺脚催 */
