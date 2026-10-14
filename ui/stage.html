@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <title>Claude 宠物</title>
+  <link rel="stylesheet" href="stage.css" />
+</head>
+<body>
+  <!-- world 用显示器坐标排版；窗口只是它上面跟着宠物走的一小块，world 反向平移让内容对上 -->
+  <div id="world">
+    <div id="pet">
+      <div id="pet-shadow"></div>
+      <div id="pet-ring"></div>
+      <div id="pet-flip">
+        <div id="pet-body">
+          <img id="pet-img" alt="" />
+          <canvas id="pet-canvas"></canvas>
+          <div id="eye-flash"></div>
+        </div>
+      </div>
+      <canvas id="pet-prev"></canvas>
+      <div id="think"><i></i><i></i><i></i></div>
+      <div id="zzz">Z</div>
+    </div>
+
+    <div id="bubble"><div class="tag"></div><div class="text"></div><div class="btns"></div></div>
+
+    <div id="menu"></div>
+
+    <div id="toast"></div>
+  </div>
+
+  <script src="diag.js"></script>
+  <script src="anim.js"></script>
+  <script src="stage.js"></script>
+</body>
+</html>

@@ -1,0 +1,101 @@
+# 推送 v* 标签（比如 v0.3.0）时编译 Windows 版并发布到 Releases。
+# Builds the Windows version and publishes a GitHub Release when a v* tag is pushed.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: ubuntu-latest
+    env:
+      # 有没有设置签名钥匙（钥匙本身只交给签名那一步）
+      HAS_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 装交叉编译工具 / Install MinGW
+        run: sudo apt-get update && sudo apt-get install -y mingw-w64
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-gnu
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: 检查版本号 / Check the tag matches the version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          ver="${GITHUB_REF_NAME#v}"
+          grep -q "^version = \"$ver\"" Cargo.toml || { echo "::error::Cargo.toml 的版本不是 $ver"; exit 1; }
+          grep -q "\"version\": \"$ver\"" tauri.conf.json || { echo "::error::tauri.conf.json 的版本不是 $ver"; exit 1; }
+
+      - name: 编译 / Build
+        run: cargo build --release --locked --target x86_64-pc-windows-gnu
+
+      - name: 打包 / Package
+        run: |
+          ver=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
+          out=target/x86_64-pc-windows-gnu/release
+          mkdir -p dist/ClaudePet/sprites
+          cp "$out/ClaudePet.exe" "$out/WebView2Loader.dll" dist/ClaudePet/
+          cp docs/使用说明.md docs/形象包格式.md dist/ClaudePet/
+          printf '人物形象包放在这里：sprites\\形象包名字\\pack.json（格式见 形象包格式.md）。\r\n' > dist/ClaudePet/sprites/放形象包的地方.txt
+          # Python 的 zipfile 会给中文文件名打 UTF-8 标记，Windows 资源管理器解压不乱码
+          python3 - "$ver" <<'PY'
+          import os, sys, zipfile
+          ver = sys.argv[1]
+          with zipfile.ZipFile(f"ClaudePet-{ver}-windows.zip", "w", zipfile.ZIP_DEFLATED) as z:
+              for root, _, files in os.walk("dist/ClaudePet"):
+                  for f in files:
+                      p = os.path.join(root, f)
+                      z.write(p, os.path.relpath(p, "dist"))
+          PY
+          cp "$out/ClaudePet.exe" ClaudePet.exe
+          sha=$(sha256sum ClaudePet.exe | cut -d' ' -f1)
+          printf '{"version":"%s","sha256":"%s"}\n' "$ver" "$sha" > latest.json
+          echo "SHA=$sha" >> "$GITHUB_ENV"
+          # 这一版的更新说明：使用说明.md 里 “## 版本 改了什么” 那一节
+          awk -v h="## $ver 改了什么" '$0==h{on=1;next} on&&/^## /{exit} on' docs/使用说明.md > notes.md
+          [ -s notes.md ] || echo "Claude 宠物 $ver" > notes.md
+          echo "VER=$ver" >> "$GITHUB_ENV"
+
+      # 用宠物在用户电脑上生成、粘贴到仓库 Secrets 的钥匙签名；宠物只装签名对得上的版本。
+      # 签的是 "claude-pet 版本 sha256"，和 src/update.rs 的 signed_message 一致。
+      - name: 签名 / Sign the update
+        if: env.HAS_SIGNING_KEY == 'true'
+        env:
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+        run: |
+          umask 077
+          printf '%s\n' "$UPDATE_SIGNING_KEY" | tr -d '\r' > key.pem
+          printf 'claude-pet %s %s' "$VER" "$SHA" > msg.txt
+          openssl pkeyutl -sign -inkey key.pem -rawin -in msg.txt -out sig.bin
+          rm -f key.pem
+          sig=$(base64 -w0 sig.bin)
+          printf '{"version":"%s","sha256":"%s","sig":"%s"}\n' "$VER" "$SHA" "$sig" > latest.json
+
+      - name: 没有签名钥匙 / No signing key
+        if: env.HAS_SIGNING_KEY != 'true'
+        run: echo "::warning::仓库 Secrets 里还没有 UPDATE_SIGNING_KEY，这一版没有签名，已安装的宠物不会自动更新到它。"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ClaudePet-${{ env.VER }}-windows
+          path: |
+            ClaudePet-${{ env.VER }}-windows.zip
+            latest.json
+
+      - name: 发布 / Publish release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            "ClaudePet-$VER-windows.zip" ClaudePet.exe latest.json \
+            --title "Claude 宠物 $VER" --notes-file notes.md

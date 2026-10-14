@@ -1,0 +1,276 @@
+:root {
+  --ink: #1d1d1f;
+  --ink-2: #55565b;
+  --paper: #ffffff;
+  --paper-2: #f6f6f8;
+  --line: rgba(0, 0, 0, 0.08);
+  --accent: #d97757;
+  --breath: #2bb3a3;
+  --alert: #f59e0b;
+  --error: #e5484d;
+  --op: #3b82f6;
+  --look: #8b5cf6;
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.18), 0 2px 6px rgba(0, 0, 0, 0.12);
+}
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0; width: 100%; height: 100%;
+  background: transparent !important;
+  overflow: hidden;
+  font-family: "Microsoft YaHei UI", "PingFang SC", "Segoe UI", system-ui, sans-serif;
+  -webkit-user-select: none; user-select: none;
+  cursor: default;
+}
+
+/* world 用显示器坐标，窗口是它上面跟着宠物走的一小块 */
+#world { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; will-change: transform; }
+
+/* ───────── 宠物 ───────── */
+#pet {
+  position: absolute; left: 0; top: 0;
+  will-change: transform;
+  transform: translate3d(-9999px, -9999px, 0);
+  touch-action: none;
+}
+#pet-flip { width: 100%; height: 100%; transform-origin: 50% 100%; transition: transform 0.14s ease-out; }
+#pet-flip.left { transform: scaleX(-1); }
+#pet-body {
+  position: relative; width: 100%; height: 100%;
+  transform-origin: 50% 100%;
+  will-change: transform;
+  cursor: grab;
+}
+#pet-body img, #pet-body canvas {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  -webkit-user-drag: none; pointer-events: none;
+  image-rendering: auto;
+}
+#pet-body img { filter: drop-shadow(0 4px 6px rgba(0,0,0,0.18)); }
+#pet.dragging #pet-body { cursor: grabbing; }
+
+#pet-shadow {
+  position: absolute; left: 18%; right: 18%; bottom: -6px; height: 12px;
+  background: radial-gradient(ellipse at center, rgba(0,0,0,0.22), rgba(0,0,0,0) 70%);
+  pointer-events: none; transition: opacity .2s, transform .2s;
+}
+#pet.dragging #pet-shadow { opacity: .35; transform: scale(.7); }
+
+/* 呼吸模式的光环 */
+#pet-ring {
+  position: absolute; left: 8%; right: 8%; bottom: -10px; height: 26px;
+  border-radius: 50%;
+  border: 2px solid var(--breath);
+  box-shadow: 0 0 18px var(--breath), inset 0 0 10px rgba(43,179,163,.5);
+  opacity: 0; pointer-events: none;
+  transform: scale(.8);
+}
+#pet.breathing #pet-ring { animation: ring 2.6s ease-in-out infinite; }
+@keyframes ring {
+  0%, 100% { opacity: .25; transform: scale(.82); }
+  50% { opacity: .9; transform: scale(1.04); }
+}
+#pet.breathing #pet-body img { animation: glow 2.6s ease-in-out infinite; }
+@keyframes glow {
+  0%, 100% { filter: drop-shadow(0 4px 6px rgba(0,0,0,0.18)) drop-shadow(0 0 0 rgba(43,179,163,0)); }
+  50% { filter: drop-shadow(0 4px 6px rgba(0,0,0,0.18)) drop-shadow(0 0 12px rgba(43,179,163,.75)); }
+}
+
+/* 思考中的小点点 */
+#think {
+  position: absolute; top: 2%; right: 4%;
+  display: none; gap: 4px; padding: 6px 9px;
+  background: var(--paper); border-radius: 14px; box-shadow: var(--shadow);
+}
+#think i { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-2); display: block; animation: dot 1s infinite ease-in-out; }
+#think i:nth-child(2) { animation-delay: .15s; }
+#think i:nth-child(3) { animation-delay: .3s; }
+#pet.thinking #think { display: flex; }
+@keyframes dot { 0%, 80%, 100% { transform: translateY(0); opacity: .4; } 40% { transform: translateY(-5px); opacity: 1; } }
+
+#zzz { position: absolute; top: 4%; right: 10%; font-weight: 700; color: var(--ink-2); display: none; font-size: 18px; }
+#pet.sleeping #zzz { display: block; animation: zzz 2.4s infinite ease-out; }
+@keyframes zzz { 0% { opacity: 0; transform: translate(0, 10px) scale(.6); } 30% { opacity: 1; } 100% { opacity: 0; transform: translate(18px, -26px) scale(1.2); } }
+
+/* 程序动作：形象包里还没有某个动作的素材时，用这些让待机图动起来。
+   类名对应 anim.js 里 ANIM_CATALOG 的 css 字段；单次动作的时长要和那里的 ms 一致。 */
+.st-idle      { animation: idle 2.8s ease-in-out infinite; }
+.st-tilt      { animation: tilt .9s ease-in-out 1; }
+.st-peek      { animation: peek 1.5s ease-in-out 1; }
+.st-stretch   { animation: stretch 1.7s ease-in-out 1; }
+.st-scratch   { animation: scratch .25s ease-in-out 4; }
+.st-spin      { animation: spin360 .8s ease-in-out 1; }
+.st-tidy      { animation: tilt .6s ease-in-out 2; }
+.st-fiddle    { animation: fiddle .65s ease-in-out 2; }
+.st-hum       { animation: hum 1s ease-in-out infinite; }
+.st-sit       { animation: sit 2.6s ease-in-out 1; }
+.st-kick      { animation: kick .9s ease-out 1; }
+.st-lie       { animation: lie 3s ease-in-out 1; }
+.st-walk      { animation: walk .34s ease-in-out infinite; }
+.st-run       { animation: run .2s ease-in-out infinite; }
+.st-skid      { animation: skid .16s ease-out forwards; }
+.st-jump      { animation: jump .3s ease-out forwards; }
+.st-land      { animation: land .3s ease-out 1; }
+.st-drag      { animation: dangle .9s ease-in-out infinite; }
+.st-vanish    { animation: vanish .2s ease-in forwards; }
+.st-appear    { animation: appear .26s cubic-bezier(.3,1.6,.5,1) 1; }
+.st-rise      { animation: rise .6s cubic-bezier(.3,1.4,.5,1) 1; }
+.st-tap       { animation: tap .38s ease-out 1; }
+.st-point     { animation: point 1.2s ease-in-out infinite; }
+.st-pointlook { animation: pointlook .9s ease-in-out 1; }
+.st-stomp     { animation: stomp .15s ease-in-out 6; }
+.st-happy     { animation: happy .45s ease-in-out 2; }
+.st-type      { animation: type .16s ease-in-out infinite; }
+.st-shrug     { animation: shrug .8s ease-in-out 1; }
+.st-scroll    { animation: scrollme .5s ease-in-out 1; }
+.st-look      { animation: look .6s ease-out forwards; }
+.st-alert     { animation: alert .9s ease-out infinite; }
+.st-think     { animation: think 1.8s ease-in-out infinite; }
+.st-sad       { animation: sad 1.2s ease-in-out 1; }
+.st-pop       { animation: pop .4s ease-out 1; }
+.st-bored     { animation: tilt .8s ease-in-out 2; }
+.st-scan      { animation: scan 3.2s ease-in-out infinite; }
+.st-talk      { animation: talk .36s ease-in-out infinite; }
+.st-giggle    { animation: giggle .2s ease-in-out 4; }
+.st-startle   { animation: startle .5s ease-out 1; }
+.st-doze      { animation: doze 1.6s ease-in-out 1 forwards; }
+.st-sleep     { animation: sleep 4s ease-in-out infinite; }
+.st-wake      { animation: wake .7s ease-out 1; }
+.st-purr      { animation: purr 1.4s ease-in-out infinite; }
+.st-angry     { animation: angry .1s linear 8; }
+.has-frames   { animation: none; }
+
+@keyframes idle { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(1.012, .985) translateY(1px); } }
+@keyframes tilt { 0%, 100% { transform: rotate(0); } 40%, 60% { transform: rotate(-7deg); } }
+@keyframes peek { 0%, 100% { transform: none; } 25%, 40% { transform: rotate(-5deg) translateX(-5px); } 60%, 80% { transform: rotate(5deg) translateX(5px); } }
+@keyframes stretch { 0%, 100% { transform: none; } 35%, 65% { transform: scale(.95, 1.09); } 80% { transform: scale(1.04, .96); } }
+@keyframes scratch { 0%, 100% { transform: rotate(-2deg); } 50% { transform: rotate(-5deg) translateY(-1px); } }
+@keyframes spin360 { 0% { transform: scaleX(1); } 25% { transform: scaleX(.05); } 50% { transform: scaleX(-1); } 75% { transform: scaleX(.05); } 100% { transform: scaleX(1); } }
+@keyframes fiddle { 0%, 100% { transform: none; } 50% { transform: scale(1.02, .98) rotate(2deg); } }
+@keyframes hum { 0%, 100% { transform: rotate(-4deg); } 50% { transform: rotate(4deg) translateY(-2px); } }
+@keyframes sit { 0%, 100% { transform: none; } 15%, 85% { transform: scale(1.06, .82); } 40% { transform: scale(1.06, .82) rotate(-3deg); } 60% { transform: scale(1.06, .82) rotate(3deg); } }
+@keyframes kick { 0%, 100% { transform: none; } 30% { transform: rotate(-6deg) translateX(-3px); } 50% { transform: rotate(5deg) translateX(4px); } }
+@keyframes lie { 0%, 100% { transform: none; } 20%, 80% { transform: scale(1.12, .7); } }
+@keyframes walk { 0%, 100% { transform: translateY(0) rotate(-3deg); } 50% { transform: translateY(-7px) rotate(3deg); } }
+@keyframes run { 0%, 100% { transform: translateY(0) rotate(5deg) scale(1.02, .97); } 50% { transform: translateY(-11px) rotate(9deg) scale(.98, 1.03); } }
+@keyframes skid { 0% { transform: rotate(6deg); } 60% { transform: rotate(-10deg) translateX(4px) scale(1.04, .95); } 100% { transform: none; } }
+@keyframes jump { 0% { transform: scale(1.1, .88); } 100% { transform: scale(.94, 1.08) rotate(-4deg); } }
+@keyframes land { 0% { transform: scale(1.14, .82); } 50% { transform: scale(.96, 1.05) translateY(-4px); } 100% { transform: none; } }
+@keyframes dangle { 0%, 100% { transform: translateY(-6px) rotate(-7deg) scale(1.03); } 50% { transform: translateY(-6px) rotate(5deg) scale(1.03); } }
+@keyframes vanish { 0% { transform: none; opacity: 1; } 40% { transform: scale(1.15, .8); } 100% { transform: scale(.05); opacity: 0; } }
+@keyframes appear { 0% { transform: scale(.05); opacity: 0; } 70% { opacity: 1; } 100% { transform: none; opacity: 1; } }
+@keyframes rise { 0% { transform: translateY(110%); } 100% { transform: none; } }
+@keyframes tap { 0% { transform: none; } 30% { transform: rotate(8deg) translateX(8px) scale(1.06, .92); } 100% { transform: none; } }
+@keyframes point { 0%, 100% { transform: rotate(9deg) translateX(4px); } 50% { transform: rotate(12deg) translateX(9px); } }
+@keyframes pointlook { 0%, 100% { transform: rotate(9deg) translateX(4px); } 30%, 70% { transform: rotate(-4deg) translateX(2px); } }
+@keyframes stomp { 0%, 100% { transform: rotate(9deg) translateY(0); } 50% { transform: rotate(9deg) translateY(-6px) scale(1.03, .97); } }
+@keyframes happy { 0%, 100% { transform: none; } 25% { transform: rotate(-8deg) translateY(-12px); } 75% { transform: rotate(8deg) translateY(-12px); } }
+@keyframes type { 0%, 100% { transform: rotate(6deg); } 50% { transform: rotate(6deg) translateY(2px) scale(1.01, .98); } }
+@keyframes shrug { 0%, 100% { transform: none; } 30%, 70% { transform: scale(1.06, .94) translateY(2px); } }
+@keyframes scrollme { 0%, 100% { transform: none; } 40% { transform: rotate(7deg) translateY(5px); } }
+@keyframes look { 0% { transform: scale(1); } 40% { transform: scale(1.07) translateY(4px); } 100% { transform: scale(1.04) translateY(2px); } }
+@keyframes alert {
+  0%, 100% { transform: translateY(0) rotate(0); }
+  15% { transform: translateY(-16px) rotate(-5deg); }
+  30% { transform: translateY(0) rotate(4deg); }
+  45% { transform: translateY(-9px) rotate(-3deg); }
+  60% { transform: translateY(0); }
+}
+@keyframes think { 0%, 100% { transform: rotate(4deg); } 50% { transform: rotate(7deg) translateY(-1px); } }
+@keyframes sad { 0%, 100% { transform: none; } 30%, 75% { transform: scale(1.05, .9) translateY(3px) rotate(-3deg); } }
+@keyframes pop { 0% { transform: none; } 40% { transform: scale(1.08, .92) translateY(-6px); } 100% { transform: none; } }
+@keyframes scan { 0%, 100% { transform: rotate(-3deg); } 50% { transform: rotate(3deg); } }
+@keyframes talk { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(1.025, 1.035) translateY(-1px); } }
+@keyframes giggle { 0%, 100% { transform: rotate(-4deg); } 50% { transform: rotate(4deg) scale(1.02); } }
+@keyframes startle { 0% { transform: none; } 25% { transform: translateY(-22px) scale(.95, 1.08); } 60% { transform: scale(1.06, .94); } 100% { transform: none; } }
+@keyframes doze { 0% { transform: none; } 100% { transform: scale(1.04, .9) rotate(-4deg); } }
+@keyframes sleep { 0%, 100% { transform: scale(1.04, .9) rotate(-4deg); } 50% { transform: scale(1.06, .87) rotate(-4deg) translateY(2px); } }
+@keyframes wake { 0% { transform: scale(1.04, .9) rotate(-4deg); } 50% { transform: scale(.96, 1.06); } 100% { transform: none; } }
+@keyframes purr { 0%, 100% { transform: scale(1.02, .98); } 50% { transform: scale(1.03, .96) rotate(2deg); } }
+@keyframes angry { 0%, 100% { transform: translateX(-2px); } 50% { transform: translateX(2px) scale(1.03); } }
+
+/* 素材里已经画了的东西（思考的小点、Zzz），就不再叠程序画的 */
+#pet.clip-D02 #think, #pet.clip-F04 #zzz { display: none !important; }
+
+/* 切换动作时上一帧淡出 */
+#pet-prev { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0; }
+
+/* 眼睛被点时的闪光 */
+#eye-flash {
+  position: absolute; pointer-events: none; border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,255,255,.95), rgba(139,92,246,.35) 45%, rgba(139,92,246,0) 70%);
+  opacity: 0;
+}
+#eye-flash.on { animation: flash .7s ease-out; }
+@keyframes flash { 0% { opacity: 0; transform: scale(.4); } 30% { opacity: 1; transform: scale(1.1); } 100% { opacity: 0; transform: scale(1.6); } }
+
+/* ───────── 气泡 ───────── */
+#bubble {
+  position: absolute; left: 0; top: 0;
+  max-width: 340px; min-width: 64px;
+  padding: 10px 14px 11px;
+  background: var(--paper); color: var(--ink);
+  border-radius: 16px; box-shadow: var(--shadow);
+  font-size: 14.5px; line-height: 1.55; letter-spacing: .2px;
+  will-change: transform, opacity;
+  opacity: 0; pointer-events: none;
+  transition: opacity .16s ease-out;
+  border: 1.5px solid transparent;
+}
+#bubble.show { opacity: 1; pointer-events: auto; }
+#bubble::after {
+  content: ""; position: absolute; bottom: -7px; left: var(--tail, 50%);
+  width: 14px; height: 14px; margin-left: -7px;
+  background: inherit; transform: rotate(45deg);
+  border-right: inherit; border-bottom: inherit;
+  border-bottom-right-radius: 3px;
+}
+#bubble .tag { font-size: 11px; font-weight: 600; margin-bottom: 2px; letter-spacing: .5px; }
+#bubble .text { max-height: 210px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; scrollbar-width: thin; }
+#bubble .text::-webkit-scrollbar { width: 4px; }
+#bubble .text::-webkit-scrollbar-thumb { background: rgba(0,0,0,.15); border-radius: 2px; }
+#bubble .btns { display: flex; gap: 8px; margin-top: 9px; }
+#bubble .btns button {
+  flex: 1; border: 0; border-radius: 10px; padding: 7px 10px; font: inherit; font-size: 13.5px;
+  cursor: pointer; background: var(--paper-2); color: var(--ink); transition: transform .08s, background .12s;
+}
+#bubble .btns button.yes { background: var(--accent); color: #fff; }
+#bubble .btns button:hover { filter: brightness(1.05); }
+#bubble .btns button:active { transform: scale(.96); }
+#bubble .btns button:disabled { opacity: .5; }
+#bubble.k-alert { border-color: var(--alert); background: #fffaf0; }
+#bubble.k-alert .tag { color: #b45309; }
+#bubble.k-error { border-color: var(--error); }
+#bubble.k-error .tag { color: var(--error); }
+#bubble.k-breath .tag { color: var(--breath); }
+#bubble.k-look .tag { color: var(--look); }
+#bubble.k-op .tag { color: var(--op); }
+#bubble .cursor { display: inline-block; width: 6px; height: 14px; background: var(--ink-2); margin-left: 2px; vertical-align: -2px; animation: blink .8s steps(2) infinite; border-radius: 1px; }
+@keyframes blink { 50% { opacity: 0; } }
+
+/* ───────── 右键菜单 ───────── */
+#menu {
+  position: absolute; left: 0; top: 0; min-width: 236px;
+  background: rgba(255,255,255,.97); backdrop-filter: blur(16px);
+  border-radius: 12px; box-shadow: var(--shadow); padding: 6px;
+  font-size: 13.5px; color: var(--ink);
+  opacity: 0; transform: scale(.96); transform-origin: top left;
+  pointer-events: none; transition: opacity .12s ease-out, transform .12s ease-out;
+}
+#menu.show { opacity: 1; transform: scale(1); pointer-events: auto; }
+#menu .item { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 8px; cursor: pointer; }
+#menu .item:hover { background: rgba(217,119,87,.12); }
+#menu .item .ic { width: 18px; text-align: center; }
+#menu .item .kb { margin-left: auto; color: #8a8a90; font-size: 11.5px; }
+#menu .item .on { margin-left: auto; color: var(--breath); font-weight: 700; }
+#menu .sep { height: 1px; background: var(--line); margin: 5px 6px; }
+#menu .seg { display: flex; gap: 4px; padding: 4px 8px 6px 36px; }
+#menu .seg span { flex: 1; text-align: center; padding: 4px 0; border-radius: 7px; background: var(--paper-2); cursor: pointer; font-size: 12.5px; }
+#menu .seg span.sel { background: var(--breath); color: #fff; }
+
+#toast {
+  position: absolute; left: 0; top: 0; transform: translateX(-50%) translateY(6px); white-space: nowrap;
+  background: rgba(20,20,24,.88); color: #fff; padding: 7px 14px; border-radius: 10px; font-size: 13px;
+  opacity: 0; transition: opacity .15s, transform .15s; pointer-events: none;
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }

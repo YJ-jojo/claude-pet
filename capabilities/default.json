@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "宠物、指示圈、框选翻译和对话框窗口",
+  "windows": ["stage", "panel", "fx", "sel"],
+  "permissions": ["core:default"]
+}

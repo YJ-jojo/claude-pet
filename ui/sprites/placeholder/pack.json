@@ -1,0 +1,10 @@
+{
+  "name": "占位形象",
+  "comment": "内置的简单占位形象。自己的形象包放在 %APPDATA%\\com.claudepet.app\\sprites\\ 下的文件夹里，照 形象包格式.md 写 pack.json。",
+  "anchor": [0.5, 1.0],
+  "eye": { "x": 0.5, "y": 0.55, "rx": 0.16, "ry": 0.06 },
+  "faces": "front",
+  "actions": {
+    "idle": { "src": "idle.png" }
+  }
+}
