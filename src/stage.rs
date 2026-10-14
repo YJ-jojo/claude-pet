@@ -1,9 +1,8 @@
 //! 舞台：宠物所在显示器上的一套坐标（CSS 像素，左上角是显示器左上角）。
 //! 0.1 版用一个铺满显示器的透明窗口画所有东西，系统每帧都要合成一整屏透明层，卡。
-//! 现在拆成三个小窗口，都只在用到的地方出现：
-//! - stage：宠物 + 气泡 + 右键菜单，窗口只比宠物大一圈，宠物跑的时候整个窗口跟着挪；
-//! - fx：按钮上的指示圈，永远鼠标穿透；
-//! - sel：框选翻译时铺满屏幕，框完缩成翻译卡片那么大。
+//! 0.2 拆成宠物、指示圈、框选翻译三个小窗口；可在用户电脑上每建一个 WebView2 窗口要 8–20 秒，
+//! 建的时候主线程卡死。0.3.1 起只剩宠物这一个窗口（stage）：窗口只比要画的东西大一圈，
+//! 宠物跑的时候整个窗口跟着挪；指示圈、框选翻译也画在它里面，用到时窗口临时变大。
 
 use crate::platform::{self, RectI};
 use crate::state::{app, StageGeom};
@@ -75,11 +74,6 @@ pub fn place(label: &str, x: f64, y: f64, w: f64, h: f64, show: Option<bool>) {
         if label == "stage" && !FIRST_SHOWN.swap(true, std::sync::atomic::Ordering::SeqCst) {
             crate::diag::mark(&format!("宠物第一次显示在 ({}, {}) 大小 {}x{}", r.x, r.y, r.w, r.h));
         }
-        // Linux 上窗口显示以后才能设穿透（Windows 上建窗口时已经设好）
-        #[cfg(not(windows))]
-        if label == "fx" {
-            let _ = win.set_ignore_cursor_events(true);
-        }
     }
 }
 
@@ -99,17 +93,15 @@ fn move_window(win: &tauri::WebviewWindow, r: RectI, same_size: bool) {
     }
 }
 
-/// 截图、录屏时要不要把宠物拍进去（指示圈和翻译框永远不拍）
+/// 截图、录屏时要不要把宠物拍进去
 pub fn apply_capture_flag() {
     #[cfg(windows)]
     {
         let a = app();
         let hide = a.cfg.read().map(|c| c.hide_from_capture).unwrap_or(true);
-        for (label, on) in [("stage", hide), ("fx", true), ("sel", true)] {
-            if let Some(w) = a.handle.get_webview_window(label) {
-                if let Ok(h) = w.hwnd() {
-                    platform::exclude_from_capture(h.0 as isize as i64, on);
-                }
+        if let Some(w) = a.handle.get_webview_window("stage") {
+            if let Ok(h) = w.hwnd() {
+                platform::exclude_from_capture(h.0 as isize as i64, hide);
             }
         }
     }
@@ -198,18 +190,18 @@ pub fn point_end(result: &str) {
     pet_action("point-end", json!({"result": result}));
 }
 
-/// 在屏幕上画一个提示圈（画在 fx 小窗口里）。kind：click / press / point / region；ms=0 一直留着
+/// 在屏幕上画一个提示圈（画在宠物窗口里）。kind：click / press / point / region；ms=0 一直留着
 pub fn highlight(r: RectI, kind: &str, ms: u64) {
     let a = app();
     ensure_on(r.x + r.w / 2, r.y + r.h / 2);
     let g = a.stage_geom();
     let (x, y) = g.to_css(r.x, r.y);
-    a.emit_to("fx", "fx-highlight", json!({"x": x, "y": y, "w": r.w as f64 / g.scale, "h": r.h as f64 / g.scale, "kind": kind, "ms": ms}));
+    a.emit_stage("fx-highlight", json!({"x": x, "y": y, "w": r.w as f64 / g.scale, "h": r.h as f64 / g.scale, "kind": kind, "ms": ms}));
 }
 
 /// 清掉提示圈（kind 为空 = 全清）
 pub fn highlight_clear(kind: Option<&str>) {
-    app().emit_to("fx", "fx-clear", json!({"kind": kind}));
+    app().emit_stage("fx-clear", json!({"kind": kind}));
 }
 
 /// 鼠标是否落在宠物窗口里可点的地方：每 16ms 看一次，决定宠物窗口要不要让鼠标穿透。

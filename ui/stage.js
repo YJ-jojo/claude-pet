@@ -2,7 +2,7 @@
 // 排版用“显示器坐标”（#world，CSS 像素，显示器左上角为原点），窗口本身只是 world 上跟着宠物走的一小块：
 // 宠物跑的时候挪的是整个窗口，窗口里的画面不动，所以不会有“画面和窗口差一帧”的抖动。
 // （0.1 版是一个铺满屏幕的透明窗口，系统每帧都要合成整屏透明层，卡。）
-// 指示圈在 fx.html，框选翻译在 sel.html，各是一个用到时才出现的小窗口。
+// 指示圈和框选翻译在 overlay.js，也画在这个窗口里，用到时窗口临时变大包住它们。
 // 动作怎么播在 anim.js；这里决定“什么时候播哪个动作”，对应《动作设计表》第 2 节的组合动作。
 'use strict';
 
@@ -379,6 +379,7 @@ function needBox() {
   if (bubbleEl.classList.contains('show')) add(S.bubbleX, S.bubbleY, bubbleEl.offsetWidth, bubbleEl.offsetHeight + 8, 26);
   if (S.menuOpen) add(S.menuX, S.menuY, menuEl.offsetWidth, menuEl.offsetHeight, 26);
   if (now() < S.toastUntil) { const tw = toastEl.offsetWidth; add(snap(S.pet.x) - tw / 2, parseFloat(toastEl.style.top) || 0, tw, toastEl.offsetHeight + 10, 8); }
+  if (typeof overlayBoxes === 'function') for (const o of overlayBoxes()) add(o.x, o.y, o.w, o.h, 0);
   return { l, t, r, b: bt };
 }
 
@@ -428,6 +429,7 @@ function sendRects(t, force) {
       rects.push({ x: r.x - 4, y: r.y - 4, w: r.w + 8, h: r.h + 12 });
     }
   }
+  if (typeof overlayHitRects === 'function') rects.push(...overlayHitRects());
   const key = JSON.stringify(rects.map((r) => [r.x | 0, r.y | 0, r.w | 0, r.h | 0]));
   if (key !== S.lastRects || force) {
     S.lastRects = key;

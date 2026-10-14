@@ -83,10 +83,11 @@ pub fn log_environment(role: &str) {
 
 static STARTUP_DONE: AtomicBool = AtomicBool::new(false);
 
-/// 四个窗口都建好了
+/// 宠物页面加载好了
 pub fn startup_done() {
-    STARTUP_DONE.store(true, Ordering::SeqCst);
-    mark("四个窗口都建好了");
+    if !STARTUP_DONE.swap(true, Ordering::SeqCst) {
+        mark("启动完成");
+    }
 }
 
 /// 启动没完成时每 5 秒记一行卡在哪（0.2.0 有两次一直卡在建窗口，日志里什么都没有）。最多记 3 分钟。
@@ -128,7 +129,7 @@ pub fn spawn_startup_watch() {
                 let built: Vec<&str> = match crate::state::try_app() {
                     Some(a) => {
                         use tauri::Manager;
-                        ["stage", "fx", "sel", "panel"].into_iter().filter(|l| a.handle.get_webview_window(l).is_some()).collect()
+                        ["stage"].into_iter().filter(|l| a.handle.get_webview_window(l).is_some()).collect()
                     }
                     None => vec![],
                 };

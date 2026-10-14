@@ -151,11 +151,8 @@ pub fn js_log(win: String, level: String, msg: String) {
     if level == "ready" {
         PAGES_READY.lock().unwrap().push(win.clone());
         crate::diag::mark(&format!("{win} 页面加载好了 {msg}"));
-        // 对话框窗口先显示、页面后加载好：要打开的标签页再发一次
-        if win == "panel" {
-            if let Some(tab) = PANEL_TAB.lock().unwrap().clone() {
-                app().emit_panel("open-tab", json!({"tab": tab}));
-            }
+        if win == "stage" {
+            crate::diag::startup_done();
         }
         return;
     }
@@ -176,7 +173,7 @@ pub fn check_started() {
     if shown {
         plog!("启动检查：宠物已显示，加载好的页面 {:?}", ready);
     } else {
-        plog!("!!! 启动 10 秒了宠物还没显示，强制显示。加载好的页面 {:?}（应有 stage、fx、sel、panel）", ready);
+        plog!("!!! 启动 10 秒了宠物还没显示，强制显示。加载好的页面 {:?}", ready);
         if let Some(w) = a.handle.get_webview_window("stage") {
             let _ = w.show();
         }
@@ -213,10 +210,10 @@ pub fn set_hit_rects(rects: Vec<RectF>) {
     app().hit.lock().unwrap().rects = rects;
 }
 
-/// 小窗口（宠物 stage、指示圈 fx、翻译 sel）摆到舞台坐标上；show=false 藏起来
+/// 宠物窗口摆到舞台坐标上；show=false 藏起来
 #[tauri::command]
 pub fn win_place(label: String, x: f64, y: f64, w: f64, h: f64, show: Option<bool>) {
-    if matches!(label.as_str(), "stage" | "fx" | "sel") {
+    if label == "stage" {
         crate::stage::place(&label, x, y, w, h, show);
     }
 }
@@ -563,30 +560,9 @@ pub fn open_panel(tab: Option<String>) {
     open_panel_tab(tab.as_deref().unwrap_or("chat"));
 }
 
-/// 最近一次要打开的标签页；对话框窗口还没建好时先记着，建好再开
-static PANEL_TAB: Mutex<Option<String>> = Mutex::new(None);
-static PANEL_PENDING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-
+/// 对话框在浏览器里打开（见 webui.rs）
 pub fn open_panel_tab(tab: &str) {
-    let a = app();
-    *PANEL_TAB.lock().unwrap() = Some(tab.to_string());
-    if let Some(w) = a.handle.get_webview_window("panel") {
-        let _ = w.show();
-        let _ = w.unminimize();
-        let _ = w.set_focus();
-        a.emit_panel("open-tab", json!({"tab": tab}));
-    } else {
-        PANEL_PENDING.store(true, std::sync::atomic::Ordering::SeqCst);
-        plog!("对话框窗口还没建好，建好后打开“{tab}”");
-    }
-}
-
-/// 对话框窗口建好了：之前有人要打开就现在打开
-pub fn panel_created() {
-    if PANEL_PENDING.swap(false, std::sync::atomic::Ordering::SeqCst) {
-        let tab = PANEL_TAB.lock().unwrap().clone().unwrap_or_else(|| "chat".into());
-        open_panel_tab(&tab);
-    }
+    crate::webui::open(tab);
 }
 
 /// 用默认浏览器打开登录页（只放行 claude.ai / anthropic.com 的网址）

@@ -2,6 +2,7 @@
 //! - /hook  接收 Claude Code 钩子事件（需要你确认、空闲等你、回答完成）→ 宠物提醒
 //! - /mcp   MCP 工具，让 Claude Code 能叫宠物说话、看屏幕、指东西
 //! - /say   让宠物说一句话
+//! - /ui/   浏览器里的对话框（见 webui.rs）
 
 use crate::platform;
 use crate::snapshot;
@@ -62,6 +63,21 @@ fn handle(mut req: tiny_http::Request, port: u16) {
         let _ = req.respond(json_resp(&json!({"ok": true, "app": "claude-pet"}), 200));
         return;
     }
+    if method == Method::Get && path.starts_with("/ui/") {
+        match crate::webui::file(&path[4..]) {
+            Some((bytes, mime)) => {
+                let _ = req.respond(
+                    Response::from_data(bytes)
+                        .with_header(Header::from_bytes(&b"Content-Type"[..], mime.as_bytes()).unwrap())
+                        .with_header(Header::from_bytes(&b"Cache-Control"[..], &b"no-store"[..]).unwrap()),
+                );
+            }
+            None => {
+                let _ = req.respond(Response::from_string("not found").with_status_code(404));
+            }
+        }
+        return;
+    }
     if method != Method::Post {
         let _ = req.respond(Response::from_string("method not allowed").with_status_code(405));
         return;
@@ -78,6 +94,29 @@ fn handle(mut req: tiny_http::Request, port: u16) {
     let mut body = String::new();
     let _ = req.as_reader().take(4 * 1024 * 1024).read_to_string(&mut body);
     let v: Value = serde_json::from_str(&body).unwrap_or(Value::Null);
+    if path.starts_with("/ui/") {
+        // 浏览器里的对话框：只认本机这个端口的页面，还要带口令
+        let origin_ok = req
+            .headers()
+            .iter()
+            .find(|h| h.field.equiv("Origin"))
+            .map(|h| {
+                let o = h.value.as_str();
+                o == format!("http://127.0.0.1:{port}") || o == format!("http://localhost:{port}")
+            })
+            .unwrap_or(false);
+        if !origin_ok || !crate::webui::authorized(&v) {
+            let _ = req.respond(json_resp(&json!({"error": "forbidden"}), 403));
+            return;
+        }
+        let r = match path.as_str() {
+            "/ui/invoke" => crate::webui::invoke(&v),
+            "/ui/poll" => crate::webui::poll(&v),
+            _ => json!({"error": "not found"}),
+        };
+        let _ = req.respond(json_resp(&r, 200));
+        return;
+    }
     match path.as_str() {
         "/hook" => {
             on_hook(&v);
