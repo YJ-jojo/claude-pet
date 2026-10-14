@@ -38,8 +38,8 @@ cargo build --release --target x86_64-pc-windows-gnu
 # target/x86_64-pc-windows-gnu/release/ClaudePet.exe + WebView2Loader.dll
 ```
 
-推送 `v*` 标签后，GitHub Actions 自动编译并发布（见 `.github/workflows/release.yml`）。
-Pushing a `v*` tag builds and publishes a release through GitHub Actions (see `.github/workflows/release.yml`).
+改了 `Cargo.toml` 和 `tauri.conf.json` 里的版本号并推送到 main，GitHub Actions 就自动编译并发布这个版本（见 `.github/workflows/release.yml`）。已安装的宠物会自己更新到签名对得上的新版本。
+Bump the version in `Cargo.toml` and `tauri.conf.json` and push to main: GitHub Actions builds and publishes that version (see `.github/workflows/release.yml`). Installed pets update themselves to new versions whose signature checks out.
 
 个人项目，仅供个人使用。
 Personal project, for personal use.
