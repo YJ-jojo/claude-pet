@@ -10,7 +10,8 @@
 //! 新文件改名成 ClaudePet.exe，启动新的（带 --wait-pid），自己退出。新进程等旧进程退出后才往下走
 //! （不然单实例检查会把它当成第二个实例关掉），下次启动时删掉 .old.exe。
 //!
-//! 下载用 PowerShell：它默认走系统代理设置，开着代理软件也能连上 GitHub。
+//! 下载用 PowerShell：它默认走系统代理设置，开着代理软件也能连上 GitHub。GitHub 连不上时
+//! 换设置里的镜像（update_sources）；镜像给的文件一样要过签名和指纹检查。
 
 use crate::plog;
 use crate::state::app;
@@ -18,7 +19,7 @@ use crate::talk;
 use base64::Engine;
 use ed25519_dalek::{Signature, SigningKey, VerifyingKey};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::time::Duration;
 
 pub const REPO: &str = "YJ-jojo/claude-pet";
@@ -227,8 +228,7 @@ fn run(manual: bool) -> Result<(), String> {
     let pubkey = std::fs::read_to_string(key_path()).map_err(|_| "这台电脑还没生成更新钥匙（托盘图标右键 → 生成更新钥匙）".to_string())?;
     let dir = exe_dir().ok_or("找不到程序所在的文件夹")?;
     let tmp = std::env::temp_dir().join(format!("claudepet-latest-{}.json", std::process::id()));
-    let url = format!("https://github.com/{REPO}/releases/latest/download/latest.json");
-    download(&url, &tmp).map_err(|e| format!("连不上 GitHub（{e}）"))?;
+    let src = fetch("releases/latest/download/latest.json", &tmp, "版本信息").map_err(|e| format!("连不上 GitHub（{e}）"))?;
     let text = std::fs::read_to_string(&tmp).map_err(|e| e.to_string())?;
     let _ = std::fs::remove_file(&tmp);
     let latest: Latest = serde_json::from_str(text.trim_start_matches('\u{feff}')).map_err(|e| format!("版本信息看不懂：{e}"))?;
@@ -246,8 +246,8 @@ fn run(manual: bool) -> Result<(), String> {
         talk::say(&format!("发现新版本 {}，正在下载。", latest.version), "talk");
     }
     let new_path = dir.join(NEW_NAME);
-    let exe_url = format!("https://github.com/{REPO}/releases/download/v{}/{EXE_NAME}", latest.version);
-    download(&exe_url, &new_path).map_err(|e| format!("新版本下载失败（{e}）"))?;
+    fetch_from(&format!("releases/download/v{}/{EXE_NAME}", latest.version), &new_path, "新版本", src)
+        .map_err(|e| format!("新版本下载失败（{e}）"))?;
     let bytes = std::fs::read(&new_path).map_err(|e| e.to_string())?;
     let got = sha256_hex(&bytes);
     if got != latest.sha256.trim().to_ascii_lowercase() {
@@ -321,39 +321,233 @@ fn sha256_hex(bytes: &[u8]) -> String {
     Sha256::digest(bytes).iter().map(|b| format!("{b:02x}")).collect()
 }
 
-/// 用 PowerShell 下载（走系统代理），最多 5 分钟
-fn download(url: &str, to: &Path) -> Result<(), String> {
+/// 上次下载成功的源，下次先试它
+static GOOD_SOURCE: AtomicUsize = AtomicUsize::new(0);
+
+/// 设置里的下载源：只认 "" 和 https:// 开头的，去重；一个都没有就直连 GitHub
+fn sources() -> Vec<String> {
+    let mut v: Vec<String> = Vec::new();
+    for s in &app().cfg().update_sources {
+        let mut s = s.trim().to_string();
+        if !s.is_empty() && !s.starts_with("https://") {
+            plog!("更新：下载源 {s} 不是 https:// 开头，跳过");
+            continue;
+        }
+        if !s.is_empty() && !s.ends_with('/') {
+            s.push('/');
+        }
+        if !v.contains(&s) {
+            v.push(s);
+        }
+    }
+    if v.is_empty() {
+        v.push(String::new());
+    }
+    v
+}
+
+fn source_name(s: &str) -> String {
+    if s.is_empty() {
+        "GitHub".into()
+    } else {
+        s.trim_start_matches("https://").trim_end_matches('/').to_string()
+    }
+}
+
+/// 下载 github.com/REPO/ 下的 path，从上次成功的源开始依次试，返回成功的源的序号
+fn fetch(path: &str, to: &Path, what: &str) -> Result<usize, String> {
+    fetch_from(path, to, what, GOOD_SOURCE.load(Ordering::SeqCst))
+}
+
+fn fetch_from(path: &str, to: &Path, what: &str, first: usize) -> Result<usize, String> {
+    let srcs = sources();
+    let mut errs = Vec::new();
+    for k in 0..srcs.len() {
+        let i = (first + k) % srcs.len();
+        let name = source_name(&srcs[i]);
+        let url = format!("{}https://github.com/{REPO}/{path}", srcs[i]);
+        match download(&url, to, &name, what) {
+            Ok(()) => {
+                GOOD_SOURCE.store(i, Ordering::SeqCst);
+                return Ok(i);
+            }
+            Err(e) => {
+                plog!("更新：从 {name} 下载{what}失败：{e}");
+                errs.push(format!("{name}：{e}"));
+            }
+        }
+    }
+    Err(errs.join("；"))
+}
+
+/// 下载脚本：一块一块读，每 3 秒报一次进度。连接和每次读都最多等 30 秒，整个最多 10 分钟。
+/// 只往标准输出写一行一行的结果（H 连上 / P 进度 / D 完成 / E 出错），Rust 这边解析后记日志。
+/// HttpWebRequest 默认走系统代理设置，开着代理软件也能用。
+const PS_DOWNLOAD: &str = r#"
+[Console]::OutputEncoding=[Text.Encoding]::UTF8
+try { [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12 } catch {}
+$n=0; $len=-1; $t=[Diagnostics.Stopwatch]::StartNew()
+try {
+  $r=[Net.HttpWebRequest]::Create('__URL__')
+  $r.Timeout=30000; $r.ReadWriteTimeout=30000; $r.UserAgent='ClaudePet-updater'
+  $p=$r.GetResponse(); $len=$p.ContentLength
+  Write-Output ('H {0} {1} {2}' -f [int]$p.StatusCode,$len,$p.ResponseUri.Host)
+  $s=$p.GetResponseStream(); $f=[IO.File]::Create('__OUT__')
+  try {
+    $b=New-Object byte[] 65536; $last=0
+    while(($k=$s.Read($b,0,$b.Length)) -gt 0) {
+      $f.Write($b,0,$k); $n+=$k
+      if($t.ElapsedMilliseconds-$last -ge 3000) { $last=$t.ElapsedMilliseconds; Write-Output ('P {0} {1} {2}' -f $n,$len,$last) }
+      if($t.ElapsedMilliseconds -gt 600000) { throw 'TOO_SLOW' }
+    }
+  } finally { $f.Close(); $s.Close(); $p.Close() }
+  if($len -ge 0 -and $n -ne $len) { throw 'SHORT' }
+  Write-Output ('D {0} {1} {2}' -f $n,$len,$t.ElapsedMilliseconds)
+} catch {
+  $e=$_.Exception; while($e.InnerException) { $e=$e.InnerException }
+  Write-Output ('E {0} {1} {2} {3}' -f $n,$len,$t.ElapsedMilliseconds,($e.Message -replace '\s+',' '))
+  exit 1
+}
+"#;
+
+fn mb(n: i64) -> String {
+    format!("{:.2} MB", n as f64 / 1_048_576.0)
+}
+
+/// 下载脚本输出的一行
+#[derive(Debug, PartialEq)]
+enum DlLine {
+    Head { code: String, len: i64, host: String },
+    Progress { got: i64, len: i64, ms: i64 },
+    Done { got: i64, ms: i64 },
+    Fail { got: i64, len: i64, ms: i64, msg: String },
+}
+
+fn parse_dl_line(line: &str) -> Option<DlLine> {
+    let mut it = line.trim().splitn(5, ' ');
+    let kind = it.next()?;
+    let a = it.next().unwrap_or("");
+    let b: i64 = it.next().and_then(|x| x.parse().ok()).unwrap_or(-1);
+    let c = it.next().unwrap_or("");
+    let rest = it.next().unwrap_or("").to_string();
+    let num = |x: &str| x.parse::<i64>().unwrap_or(-1);
+    match kind {
+        "H" => Some(DlLine::Head { code: a.into(), len: b, host: c.into() }),
+        "P" => Some(DlLine::Progress { got: num(a), len: b, ms: num(c) }),
+        "D" => Some(DlLine::Done { got: num(a), ms: num(c) }),
+        "E" => Some(DlLine::Fail { got: num(a), len: b, ms: num(c), msg: rest }),
+        _ => None,
+    }
+}
+
+fn describe_fail(got: i64, len: i64, ms: i64, msg: &str) -> String {
+    let why = match msg.trim() {
+        "TOO_SLOW" => "10 分钟还没下完，太慢".to_string(),
+        "SHORT" => "连接提前断了".to_string(),
+        m if m.is_empty() => "没有说明".to_string(),
+        m => m.chars().take(200).collect(),
+    };
+    let secs = ms as f64 / 1000.0;
+    if got > 0 {
+        let total = if len >= 0 { mb(len) } else { "未知大小".into() };
+        format!("{why}；断在 {} / {total}，用了 {secs:.0} 秒", mb(got))
+    } else {
+        format!("{why}；一个字节都没收到，用了 {secs:.0} 秒")
+    }
+}
+
+/// 用 PowerShell 下载一个文件，过程记进日志
+fn download(url: &str, to: &Path, source: &str, what: &str) -> Result<(), String> {
+    use std::io::BufRead;
     let _ = std::fs::remove_file(to);
     let q = |s: &str| s.replace('\'', "''");
-    let script = format!(
-        "$ProgressPreference='SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; \
-         Invoke-WebRequest -UseBasicParsing -Uri '{}' -OutFile '{}' -TimeoutSec 300",
-        q(url),
-        q(&to.display().to_string())
-    );
+    let script = PS_DOWNLOAD.replace("__URL__", &q(url)).replace("__OUT__", &q(&to.display().to_string()));
     let mut cmd = std::process::Command::new("powershell.exe");
     cmd.args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", &script])
         .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
     }
-    let out = cmd.output().map_err(|e| format!("启动 PowerShell 失败：{e}"))?;
-    if !out.status.success() || !to.exists() {
-        let err = String::from_utf8_lossy(&out.stderr);
-        let first = err.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("没有说明");
-        return Err(first.chars().take(200).collect());
+    let mut child = cmd.spawn().map_err(|e| format!("启动 PowerShell 失败：{e}"))?;
+    let stderr = child.stderr.take();
+    let err_reader = std::thread::spawn(move || {
+        let mut s = Vec::new();
+        if let Some(mut e) = stderr {
+            let _ = std::io::Read::read_to_end(&mut e, &mut s);
+        }
+        s
+    });
+    let mut result: Option<Result<(), String>> = None;
+    let mut big = false;
+    if let Some(out) = child.stdout.take() {
+        // 按字节切行：万一出错信息不是 UTF-8 也不会读到一半停下
+        for line in std::io::BufReader::new(out).split(b'\n').map_while(Result::ok) {
+            let line = String::from_utf8_lossy(&line);
+            match parse_dl_line(&line) {
+                Some(DlLine::Head { code, len, host }) => {
+                    big = len > 1_000_000;
+                    if big {
+                        plog!("更新：从 {source} 下载{what}，连上了 {host}（HTTP {code}），大小 {}", mb(len));
+                    }
+                }
+                Some(DlLine::Progress { got, len, ms }) => {
+                    let kbs = if ms > 0 { got as f64 / 1024.0 / (ms as f64 / 1000.0) } else { 0.0 };
+                    let total = if len >= 0 { mb(len) } else { "?".into() };
+                    plog!("更新：{what}已下载 {} / {total}（平均 {kbs:.0} KB/s）", mb(got));
+                }
+                Some(DlLine::Done { got, ms }) => {
+                    if big || ms > 5000 {
+                        plog!("更新：{what}下载完 {}，用了 {:.1} 秒", mb(got), ms as f64 / 1000.0);
+                    }
+                    result = Some(Ok(()));
+                }
+                Some(DlLine::Fail { got, len, ms, msg }) => result = Some(Err(describe_fail(got, len, ms, &msg))),
+                None => {}
+            }
+        }
     }
-    Ok(())
+    let status = child.wait().map_err(|e| e.to_string())?;
+    let err = err_reader.join().unwrap_or_default();
+    match result {
+        Some(Ok(())) if status.success() && to.exists() => Ok(()),
+        Some(Err(e)) => {
+            let _ = std::fs::remove_file(to);
+            Err(e)
+        }
+        _ => {
+            let _ = std::fs::remove_file(to);
+            let err = String::from_utf8_lossy(&err);
+            let first = err.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("PowerShell 没说原因");
+            Err(first.chars().take(200).collect())
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use ed25519_dalek::Signer;
+
+    #[test]
+    fn parses_download_lines() {
+        assert_eq!(
+            parse_dl_line("H 200 6043136 release-assets.githubusercontent.com"),
+            Some(DlLine::Head { code: "200".into(), len: 6043136, host: "release-assets.githubusercontent.com".into() })
+        );
+        assert_eq!(parse_dl_line("P 1048576 6043136 3001"), Some(DlLine::Progress { got: 1048576, len: 6043136, ms: 3001 }));
+        assert_eq!(parse_dl_line("D 6043136 6043136 9000"), Some(DlLine::Done { got: 6043136, ms: 9000 }));
+        assert_eq!(
+            parse_dl_line("E 0 -1 30012 The operation has timed out."),
+            Some(DlLine::Fail { got: 0, len: -1, ms: 30012, msg: "The operation has timed out.".into() })
+        );
+        assert_eq!(parse_dl_line("随便什么"), None);
+        assert!(describe_fail(5_000_000, 6_043_136, 60_000, "SHORT").contains("断在 4.77 MB / 5.76 MB"));
+        assert!(describe_fail(0, -1, 30_000, "无法连接到远程服务器").starts_with("无法连接到远程服务器；一个字节都没收到"));
+    }
 
     #[test]
     fn compares_versions() {

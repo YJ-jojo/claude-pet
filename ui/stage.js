@@ -105,6 +105,8 @@ async function loadPack(name, base) {
     const r = anim.norm([pack.eye.rx, pack.eye.ry]);
     if (c && r) S.eye = { x: c[0], y: c[1], rx: r[0], ry: r[1] };
   }
+  S.idleCfg = readIdleCfg(pack.idle);
+  if (S.idleCfg.custom) S.nextIdle = performance.now() + nextIdleGap();
   for (const id of ['D02', 'F04']) petEl.classList.toggle('clip-' + id, anim.has(id));
   resizePet();
   diagLog('info', `形象包 ${name || 'placeholder'} 载入 ${Math.round(performance.now() - t0)}ms，有素材的动作 ${Object.keys(anim.clips).join(',') || '无'}，素材帧率 ${pack.fps || 30}，解码高度 ${S.decodeH}`);
@@ -213,7 +215,7 @@ function bodyBox() {
 /** 有事发生：醒过来，重新计算空闲时间 */
 function markActive() {
   S.lastActive = now();
-  S.nextIdle = Math.max(S.nextIdle, S.lastActive + 5000);
+  S.nextIdle = Math.max(S.nextIdle, S.lastActive + (S.idleCfg && S.idleCfg.custom ? S.idleCfg.every[0] : 5000));
   if (S.sleep) {
     const was = S.sleep;
     S.sleep = null;
@@ -250,7 +252,41 @@ function baseAnim(t) {
 // 随机待机小动作：A02/A03 最常见；空闲久了才伸懒腰、坐下、躺平
 const IDLE_POOL = [['A02', 4], ['A03', 4], ['A04', 1], ['A05', 1], ['A06', 1], ['A07', 1], ['A08', 1], ['A09', 1], ['A10', 0], ['A11', 1], ['A12', 0]];
 
+/**
+ * 形象包可以在 pack.json 里自己定待机小动作：
+ *   "idle": { "every": [30, 60], "pool": { "A02": 1 } }
+ * every：两次小动作之间隔几秒（最短、最长，在中间随机），默认 [8, 20]；
+ * pool：只从这些动作里按权重挑（素材里没有的动作不会播），默认用程序内置的那一套。
+ */
+function readIdleCfg(c) {
+  const out = { every: [8000, 20000], pool: null };
+  if (!c || typeof c !== 'object') return out;
+  if (Array.isArray(c.every) && c.every.length === 2 && c.every.every((x) => typeof x === 'number' && x > 0)) {
+    const [a, b] = c.every.map((x) => x * 1000);
+    out.every = [Math.min(a, b), Math.max(a, b)];
+    out.custom = true;
+  }
+  if (c.pool && typeof c.pool === 'object') {
+    const pool = Object.entries(c.pool).filter(([id, w]) => ANIM_CATALOG[id] && typeof w === 'number' && w > 0 && anim.has(id));
+    out.pool = pool;
+    if (!pool.length) diagLog('warn', `pack.json 的 idle.pool 里没有可用的动作（要有素材的动作编号），待机时不播小动作`);
+  }
+  return out;
+}
+
+function nextIdleGap() {
+  const [a, b] = (S.idleCfg || {}).every || [8000, 20000];
+  return a + Math.random() * (b - a);
+}
+
 function pickIdle(idleFor) {
+  const custom = S.idleCfg && S.idleCfg.pool;
+  if (custom) {
+    if (!custom.length) return null;
+    let r = Math.random() * custom.reduce((a, [, w]) => a + w, 0);
+    for (const [id, w] of custom) if ((r -= w) <= 0) return id;
+    return custom[0][0];
+  }
   const pool = IDLE_POOL.map(([id, w]) => {
     if (id === 'A04' && idleFor > 60000) w = 3;
     if (id === 'A10' && idleFor > 60000) w = 2;
@@ -274,8 +310,9 @@ function idleLife(t, base) {
     return;
   }
   if (S.sleep || t < S.nextIdle) return;
-  S.nextIdle = t + 8000 + Math.random() * 12000;
+  S.nextIdle = t + nextIdleGap();
   const id = pickIdle(idleFor);
+  if (!id) return;
   anim.play(id, ANIM_CATALOG[id].loop ? { ms: 3000 + Math.random() * 2000 } : {});
 }
 
