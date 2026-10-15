@@ -7,7 +7,7 @@ use crate::talk;
 use crate::plog;
 use serde_json::{json, Value};
 
-/// 开始框选：sel 小窗口铺满鼠标所在的显示器，接住鼠标
+/// 开始框选：宠物窗口临时铺满鼠标所在的显示器，接住鼠标（stage.js 里的 overlay 部分）
 pub fn begin() {
     let a = app();
     let (sx, sy) = platform::cursor_pos();
@@ -15,12 +15,11 @@ pub fn begin() {
     crate::stage::highlight_clear(Some("region"));
     let g = a.stage_geom();
     let (mw, mh) = (g.w as f64 / g.scale, g.h as f64 / g.scale);
-    crate::stage::place("sel", 0.0, 0.0, mw, mh, Some(true));
-    a.emit_to("sel", "sel-start", json!({"mon": {"w": mw, "h": mh}}));
+    a.emit_stage("sel-start", json!({"mon": {"w": mw, "h": mh}}));
 }
 
 pub fn cancel() {
-    crate::stage::place("sel", 0.0, 0.0, 0.0, 0.0, Some(false));
+    app().emit_stage("sel-clear", json!({}));
     crate::stage::highlight_clear(Some("region"));
 }
 
@@ -76,10 +75,10 @@ pub async fn region(x: f64, y: f64, w: f64, h: f64) {
     let rect = json!({"x": x, "y": y, "w": w, "h": h});
     let mon = json!({"w": g.w as f64 / g.scale, "h": g.h as f64 / g.scale});
     let Some(img) = tokio::task::spawn_blocking(move || platform::capture_screen_rect(sx, sy, sw, sh)).await.ok().flatten() else {
-        a.emit_to("sel", "sel-result", json!({"rect": rect, "mon": mon.clone(), "error": "截图失败"}));
+        a.emit_stage("sel-result", json!({"rect": rect, "mon": mon.clone(), "error": "截图失败"}));
         return;
     };
-    a.emit_to("sel", "sel-result", json!({"rect": rect, "mon": mon.clone(), "loading": true}));
+    a.emit_stage("sel-result", json!({"rect": rect, "mon": mon.clone(), "loading": true}));
     crate::stage::highlight(platform::RectI { x: sx, y: sy, w: sw, h: sh }, "region", 0);
     let cfg = a.cfg();
     let target = lang_name(&cfg.translate_target);
@@ -112,7 +111,7 @@ pub async fn region(x: f64, y: f64, w: f64, h: f64) {
                     .collect()
             }
             Err(e) => {
-                a.emit_to("sel", "sel-result", json!({"rect": rect, "mon": mon.clone(), "error": e}));
+                a.emit_stage("sel-result", json!({"rect": rect, "mon": mon.clone(), "error": e}));
                 return;
             }
         }
@@ -123,16 +122,16 @@ pub async fn region(x: f64, y: f64, w: f64, h: f64) {
         match a.s_tr.ask(vec![Block::Image(jpg), Block::Text(format!("{}\n{msg}", crate::prompts::translate_image()))], |_| {}).await {
             Ok(ans) => extract_json(&ans.text).and_then(|v| v.as_array().cloned()).unwrap_or_default(),
             Err(e) => {
-                a.emit_to("sel", "sel-result", json!({"rect": rect, "mon": mon.clone(), "error": e}));
+                a.emit_stage("sel-result", json!({"rect": rect, "mon": mon.clone(), "error": e}));
                 return;
             }
         }
     };
     if items.is_empty() {
-        a.emit_to("sel", "sel-result", json!({"rect": rect, "mon": mon.clone(), "error": "这块里没认出文字"}));
+        a.emit_stage("sel-result", json!({"rect": rect, "mon": mon.clone(), "error": "这块里没认出文字"}));
         return;
     }
-    a.emit_to("sel", "sel-result", json!({"rect": rect, "mon": mon.clone(), "items": items}));
+    a.emit_stage("sel-result", json!({"rect": rect, "mon": mon.clone(), "items": items}));
     if cfg.translate_speak {
         let all: Vec<String> = items.iter().filter_map(|i| i["dst"].as_str().map(|s| s.to_string())).collect();
         a.tts.stop();

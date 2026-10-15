@@ -2,7 +2,7 @@
 // 排版用“显示器坐标”（#world，CSS 像素，显示器左上角为原点），窗口本身只是 world 上跟着宠物走的一小块：
 // 宠物跑的时候挪的是整个窗口，窗口里的画面不动，所以不会有“画面和窗口差一帧”的抖动。
 // （0.1 版是一个铺满屏幕的透明窗口，系统每帧都要合成整屏透明层，卡。）
-// 指示圈在 fx.html，框选翻译在 sel.html，各是一个用到时才出现的小窗口。
+// 指示圈和框选翻译在 overlay.js，也画在这个窗口里，用到时窗口临时变大包住它们。
 // 动作怎么播在 anim.js；这里决定“什么时候播哪个动作”，对应《动作设计表》第 2 节的组合动作。
 'use strict';
 
@@ -105,6 +105,8 @@ async function loadPack(name, base) {
     const r = anim.norm([pack.eye.rx, pack.eye.ry]);
     if (c && r) S.eye = { x: c[0], y: c[1], rx: r[0], ry: r[1] };
   }
+  S.idleCfg = readIdleCfg(pack.idle);
+  if (S.idleCfg.custom) S.nextIdle = performance.now() + nextIdleGap();
   for (const id of ['D02', 'F04']) petEl.classList.toggle('clip-' + id, anim.has(id));
   resizePet();
   diagLog('info', `形象包 ${name || 'placeholder'} 载入 ${Math.round(performance.now() - t0)}ms，有素材的动作 ${Object.keys(anim.clips).join(',') || '无'}，素材帧率 ${pack.fps || 30}，解码高度 ${S.decodeH}`);
@@ -213,7 +215,7 @@ function bodyBox() {
 /** 有事发生：醒过来，重新计算空闲时间 */
 function markActive() {
   S.lastActive = now();
-  S.nextIdle = Math.max(S.nextIdle, S.lastActive + 5000);
+  S.nextIdle = Math.max(S.nextIdle, S.lastActive + (S.idleCfg && S.idleCfg.custom ? S.idleCfg.every[0] : 5000));
   if (S.sleep) {
     const was = S.sleep;
     S.sleep = null;
@@ -250,7 +252,41 @@ function baseAnim(t) {
 // 随机待机小动作：A02/A03 最常见；空闲久了才伸懒腰、坐下、躺平
 const IDLE_POOL = [['A02', 4], ['A03', 4], ['A04', 1], ['A05', 1], ['A06', 1], ['A07', 1], ['A08', 1], ['A09', 1], ['A10', 0], ['A11', 1], ['A12', 0]];
 
+/**
+ * 形象包可以在 pack.json 里自己定待机小动作：
+ *   "idle": { "every": [30, 60], "pool": { "A02": 1 } }
+ * every：两次小动作之间隔几秒（最短、最长，在中间随机），默认 [8, 20]；
+ * pool：只从这些动作里按权重挑（素材里没有的动作不会播），默认用程序内置的那一套。
+ */
+function readIdleCfg(c) {
+  const out = { every: [8000, 20000], pool: null };
+  if (!c || typeof c !== 'object') return out;
+  if (Array.isArray(c.every) && c.every.length === 2 && c.every.every((x) => typeof x === 'number' && x > 0)) {
+    const [a, b] = c.every.map((x) => x * 1000);
+    out.every = [Math.min(a, b), Math.max(a, b)];
+    out.custom = true;
+  }
+  if (c.pool && typeof c.pool === 'object') {
+    const pool = Object.entries(c.pool).filter(([id, w]) => ANIM_CATALOG[id] && typeof w === 'number' && w > 0 && anim.has(id));
+    out.pool = pool;
+    if (!pool.length) diagLog('warn', `pack.json 的 idle.pool 里没有可用的动作（要有素材的动作编号），待机时不播小动作`);
+  }
+  return out;
+}
+
+function nextIdleGap() {
+  const [a, b] = (S.idleCfg || {}).every || [8000, 20000];
+  return a + Math.random() * (b - a);
+}
+
 function pickIdle(idleFor) {
+  const custom = S.idleCfg && S.idleCfg.pool;
+  if (custom) {
+    if (!custom.length) return null;
+    let r = Math.random() * custom.reduce((a, [, w]) => a + w, 0);
+    for (const [id, w] of custom) if ((r -= w) <= 0) return id;
+    return custom[0][0];
+  }
   const pool = IDLE_POOL.map(([id, w]) => {
     if (id === 'A04' && idleFor > 60000) w = 3;
     if (id === 'A10' && idleFor > 60000) w = 2;
@@ -274,9 +310,15 @@ function idleLife(t, base) {
     return;
   }
   if (S.sleep || t < S.nextIdle) return;
-  S.nextIdle = t + 8000 + Math.random() * 12000;
+  // 等待机循环回到开头再切，姿势对得上；最多等 4 秒
+  if (!anim.atLoopStart() && t - S.nextIdle < 4000) return;
+  S.nextIdle = t + nextIdleGap();
   const id = pickIdle(idleFor);
-  anim.play(id, ANIM_CATALOG[id].loop ? { ms: 3000 + Math.random() * 2000 } : {});
+  if (!id) return;
+  // 间隔从小动作播完算起：小动作比间隔还长时也不会一个接一个
+  anim.play(id, ANIM_CATALOG[id].loop ? { ms: 3000 + Math.random() * 2000 } : {}).then(() => {
+    S.nextIdle = Math.max(S.nextIdle, now() + nextIdleGap());
+  });
 }
 
 /** 指着按钮时：每 3 秒回头看你一眼，8 秒你还没点就跺脚催 */
@@ -337,6 +379,7 @@ function needBox() {
   if (bubbleEl.classList.contains('show')) add(S.bubbleX, S.bubbleY, bubbleEl.offsetWidth, bubbleEl.offsetHeight + 8, 26);
   if (S.menuOpen) add(S.menuX, S.menuY, menuEl.offsetWidth, menuEl.offsetHeight, 26);
   if (now() < S.toastUntil) { const tw = toastEl.offsetWidth; add(snap(S.pet.x) - tw / 2, parseFloat(toastEl.style.top) || 0, tw, toastEl.offsetHeight + 10, 8); }
+  if (typeof overlayBoxes === 'function') for (const o of overlayBoxes()) add(o.x, o.y, o.w, o.h, 0);
   return { l, t, r, b: bt };
 }
 
@@ -386,6 +429,7 @@ function sendRects(t, force) {
       rects.push({ x: r.x - 4, y: r.y - 4, w: r.w + 8, h: r.h + 12 });
     }
   }
+  if (typeof overlayHitRects === 'function') rects.push(...overlayHitRects());
   const key = JSON.stringify(rects.map((r) => [r.x | 0, r.y | 0, r.w | 0, r.h | 0]));
   if (key !== S.lastRects || force) {
     S.lastRects = key;

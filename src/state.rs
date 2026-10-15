@@ -144,18 +144,14 @@ impl App {
         }
     }
 
-    /// 只发给某个窗口（fx、sel 这些小窗口）
-    pub fn emit_to(&self, label: &str, event: &str, payload: Value) {
-        let _ = self.handle.emit_to(label, event, payload);
-    }
-
+    /// 发给浏览器里的对话框（见 webui.rs）
     pub fn emit_panel(&self, event: &str, payload: Value) {
-        if let Some(w) = self.handle.get_webview_window("panel") {
-            let _ = w.emit(event, payload);
-        }
+        crate::webui::push(event, &payload);
     }
 
+    /// 宠物窗口和浏览器里的对话框都发
     pub fn emit_all(&self, event: &str, payload: Value) {
+        crate::webui::push(event, &payload);
         let _ = self.handle.emit(event, payload);
     }
 

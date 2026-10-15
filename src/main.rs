@@ -18,6 +18,7 @@ mod state;
 mod talk;
 mod translate;
 mod tts;
+mod webui;
 
 use crate::state::{app, App, HitState, StageGeom};
 use claude::Session;
@@ -28,7 +29,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
+use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 pub fn quit() {
@@ -210,67 +211,6 @@ fn create_stage(handle: &tauri::AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
-/// 其余三个窗口（指示圈、框选翻译、对话框）在后台线程里建，不挡宠物和托盘、快捷键、本地服务。
-/// 0.2.1 在用户电脑上 4 个窗口一个接一个建，花了 117 秒，这期间本地服务和快捷键都没起来。
-fn create_other_windows(handle: tauri::AppHandle) {
-    std::thread::Builder::new()
-        .name("windows".into())
-        .spawn(move || {
-            // 指示圈：永远穿透（Linux 上没显示的窗口不能设穿透，只在 Windows 上一开始就设）
-            match small_window(&handle, "fx", "fx.html") {
-                Ok(fx) => {
-                    diag::mark("fx 窗口建好");
-                    #[cfg(windows)]
-                    {
-                        let _ = fx.set_ignore_cursor_events(true);
-                        if let Ok(h) = fx.hwnd() {
-                            platform::set_no_activate(h.0 as isize as i64);
-                        }
-                    }
-                    #[cfg(not(windows))]
-                    let _ = fx;
-                }
-                Err(e) => plog!("!!! fx 窗口建不出来：{e}"),
-            }
-            // 框选翻译 + 翻译卡片：出现时就要接鼠标，不穿透
-            match small_window(&handle, "sel", "sel.html") {
-                Ok(sel) => {
-                    diag::mark("sel 窗口建好");
-                    #[cfg(windows)]
-                    if let Ok(h) = sel.hwnd() {
-                        platform::set_no_activate(h.0 as isize as i64);
-                    }
-                    #[cfg(not(windows))]
-                    let _ = sel;
-                }
-                Err(e) => plog!("!!! sel 窗口建不出来：{e}"),
-            }
-            stage::apply_capture_flag();
-            let panel = WebviewWindowBuilder::new(&handle, "panel", WebviewUrl::App("panel.html".into()))
-                .title("Claude 宠物")
-                .inner_size(460.0, 700.0)
-                .min_inner_size(380.0, 480.0)
-                .visible(false)
-                .build();
-            match panel {
-                Ok(panel) => {
-                    diag::mark("panel 窗口建好");
-                    let p2 = panel.clone();
-                    panel.on_window_event(move |ev| {
-                        if let WindowEvent::CloseRequested { api, .. } = ev {
-                            api.prevent_close();
-                            let _ = p2.hide();
-                        }
-                    });
-                    commands::panel_created();
-                }
-                Err(e) => plog!("!!! 对话框窗口建不出来：{e}"),
-            }
-            diag::startup_done();
-        })
-        .ok();
-}
-
 fn setup(handle: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     diag::mark("开始初始化");
     let cfg_dir = handle.path().app_config_dir()?;
@@ -342,11 +282,11 @@ fn setup(handle: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     build_tray(handle)?;
     register_hotkeys(handle);
     server::start(cfg.port);
+    webui::debug_print(&webui::url("chat"));
     diag::spawn_startup_watch();
     diag::mark("开始建宠物窗口");
     create_stage(handle)?;
     diag::mark("宠物窗口建好（还没显示，等页面加载完自己摆位置）");
-    create_other_windows(handle.clone());
     diag::spawn_perf_sampler(handle.clone());
     // 10 秒后宠物还没出来：记下哪些页面没加载好
     std::thread::spawn(|| {
@@ -373,15 +313,18 @@ fn setup(handle: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         let found = claude::find_claude();
         plog!("Claude Code：{}", found.as_ref().map(|c| format!("{c:?}")).unwrap_or_else(|| "没找到".into()));
         if found.is_none() {
-            talk::say("我还没有“脑子”：要装一下 Claude Code。设置页已经打开了，点“一键安装”，不用开终端。", "alert");
-            commands::open_panel_tab("settings");
+            if auto_open_settings() {
+                talk::say("我还没有“脑子”：要装一下 Claude Code。设置页已经在浏览器里打开了，点“一键安装”，不用开终端。", "alert");
+            } else {
+                talk::say("我还没有“脑子”：要装一下 Claude Code。托盘图标右键 → 设置，点“一键安装”。", "alert");
+            }
             return;
         }
         let logged = desktop::logged_in().await;
         plog!("Claude Code 登录状态：{}", if logged { "已登录" } else { "没登录" });
         if !logged {
+            auto_open_settings();
             talk::say("Claude Code 装好了，但还没登录。设置页里点“登录”，在弹出的网页上用你的 Max 账号授权一下。", "alert");
-            commands::open_panel_tab("settings");
             return;
         }
         let a = app();
@@ -389,6 +332,23 @@ fn setup(handle: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         a.s_chat.warm(false).await;
     });
     Ok(())
+}
+
+/// 启动时缺东西要去设置页：自动在浏览器里打开，但 12 小时内只自动开一次，免得每次启动都弹浏览器
+fn auto_open_settings() -> bool {
+    let mark = app().data_dir.join("auto-settings-opened");
+    let recent = std::fs::metadata(&mark)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.elapsed().ok())
+        .map(|d| d < Duration::from_secs(12 * 3600))
+        .unwrap_or(false);
+    if recent {
+        return false;
+    }
+    let _ = std::fs::write(&mark, b"");
+    commands::open_panel_tab("settings");
+    true
 }
 
 fn main() {

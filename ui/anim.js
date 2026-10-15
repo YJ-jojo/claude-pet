@@ -479,6 +479,19 @@ class PetAnim {
 
   get playing() { return this.shot ? this.shot.id : null; }
 
+  /**
+   * 底层循环视频是不是刚回到开头（或马上回到开头）。待机小动作在这时切进去，
+   * 首帧和待机首帧是同一个姿势，接得上；回来时待机也从开头接着播。不是视频时总是 true。
+   */
+  atLoopStart(win = 0.06) {
+    const s = this.shown;
+    if (this.shot || !s || !s.media) return true;
+    if (!s.clip.loop) return false; // 单次动作刚播完、还停在最后一帧，等下一帧换回待机
+    const m = s.media, d = m.duration;
+    if (!(d > 0) || m.paused) return true;
+    return m.currentTime < win || m.currentTime > d - win / 2;
+  }
+
   /** 画布尺寸变了，下一帧强制重画 */
   invalidate() { this._lastClip = null; }
 

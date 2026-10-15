@@ -274,3 +274,45 @@ html, body {
   opacity: 0; transition: opacity .15s, transform .15s; pointer-events: none;
 }
 #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ───────── 指示圈（以前的 fx 窗口）：永远不接鼠标 ───────── */
+#fx { position: absolute; left: 0; top: 0; width: 0; height: 0; pointer-events: none; z-index: 40; --op: #3b82f6; }
+#fx .hl { position: absolute; pointer-events: none; border-radius: 10px; }
+#fx .hl.click { border: 3px solid var(--accent); box-shadow: 0 0 0 4px rgba(217,119,87,.25); animation: hlclick .7s ease-out forwards; }
+#fx .hl.point { border: 3px solid var(--op); box-shadow: 0 0 0 5px rgba(59,130,246,.22), 0 0 24px rgba(59,130,246,.5); animation: hlpoint 1s ease-in-out infinite; }
+#fx .hl.region { border: 2px dashed var(--accent); border-radius: 4px; }
+@keyframes hlclick { 0% { transform: scale(1.35); opacity: 0; } 30% { transform: scale(1); opacity: 1; } 100% { transform: scale(.96); opacity: 0; } }
+@keyframes hlpoint { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+#fx .ripple { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%; background: var(--accent); pointer-events: none; animation: ripple .5s ease-out forwards; }
+@keyframes ripple { 0% { transform: scale(.3); opacity: .9; } 100% { transform: scale(3.2); opacity: 0; } }
+
+/* ───────── 框选翻译（以前的 sel 窗口）：框选时铺满显示器 ───────── */
+#select { position: absolute; left: 0; top: 0; display: none; cursor: crosshair; background: rgba(10, 10, 20, 0.18); z-index: 50; overflow: hidden; }
+#select.show { display: block; }
+#select .hint {
+  position: absolute; left: 50%; top: 28px; transform: translateX(-50%);
+  background: rgba(20,20,24,.86); color: #fff; padding: 8px 14px; border-radius: 10px; font-size: 13px; white-space: nowrap;
+}
+#select .box { position: absolute; border: 2px solid var(--accent); background: rgba(255,255,255,.06); box-shadow: 0 0 0 9999px rgba(10,10,20,.18); display: none; }
+#select.dragging { background: transparent; }
+
+#card {
+  position: absolute; left: 0; top: 0; width: 380px; max-height: 420px; display: none; flex-direction: column; z-index: 45;
+  background: #fff; color: #1d1d1f; border-radius: 14px;
+  box-shadow: 0 4px 10px rgba(0,0,0,.16), 0 1px 3px rgba(0,0,0,.12);
+  font-size: 14px; overflow: hidden;
+}
+#card.show { display: flex; }
+#card .head { display: flex; align-items: center; gap: 6px; padding: 9px 10px 8px 14px; border-bottom: 1px solid rgba(0,0,0,.08); font-weight: 600; font-size: 13px; }
+#card .head .sp { flex: 1; }
+#card .head button { border: 0; background: #f6f6f8; border-radius: 8px; padding: 4px 9px; font: inherit; font-weight: 500; font-size: 12.5px; cursor: pointer; }
+#card .head button:hover { background: #ececf0; }
+#card .body { overflow-y: auto; padding: 6px 14px 12px; }
+#card .pair { padding: 7px 0; border-bottom: 1px dashed rgba(0,0,0,.08); }
+#card .pair:last-child { border-bottom: 0; }
+#card .src { color: #7a7a80; font-size: 12.5px; line-height: 1.45; white-space: pre-wrap; }
+#card .dst { color: #1d1d1f; font-size: 14.5px; line-height: 1.55; margin-top: 2px; white-space: pre-wrap; -webkit-user-select: text; user-select: text; }
+#card .loading { padding: 18px 14px; color: #55565b; display: flex; align-items: center; gap: 10px; }
+#card .spin { width: 16px; height: 16px; border-radius: 50%; border: 2px solid #ddd; border-top-color: var(--accent); animation: cardspin .7s linear infinite; }
+@keyframes cardspin { to { transform: rotate(360deg); } }
+#card .err { padding: 16px 14px; color: #e5484d; }

@@ -185,3 +185,9 @@ pub use win::*;
 mod stub;
 #[cfg(not(windows))]
 pub use stub::*;
+
+#[cfg_attr(not(windows), allow(dead_code))]
+/// 浏览器里开着的宠物对话框（标签页标题见 webui::PAGE_TITLE）：看屏幕、选窗口时当成宠物自己的窗口跳过
+pub fn is_own_page(title: &str) -> bool {
+    title.contains(crate::webui::PAGE_TITLE)
+}

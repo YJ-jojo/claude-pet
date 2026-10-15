@@ -88,6 +88,10 @@ pub struct Config {
     pub hotkey_stop: String,
     pub hotkey_chat: String,
 
+    /// 自动更新的下载源，按顺序试，失败就换下一个。"" 是直接连 GitHub，其它是 GitHub 镜像，
+    /// 地址拼在 https://github.com/... 前面。下载的东西都要过签名和指纹检查，镜像改不了内容
+    pub update_sources: Vec<String>,
+
     /// 上次宠物的位置
     pub pet_x: Option<i32>,
     pub pet_y: Option<i32>,
@@ -149,6 +153,7 @@ impl Default for Config {
             hotkey_watch: "CommandOrControl+Alt+W".into(),
             hotkey_stop: "CommandOrControl+Alt+Q".into(),
             hotkey_chat: "CommandOrControl+Alt+Space".into(),
+            update_sources: vec!["".into(), "https://ghfast.top/".into(), "https://gh-proxy.com/".into()],
             pet_x: None,
             pet_y: None,
         }
