@@ -15,8 +15,8 @@ jobs:
   windows:
     runs-on: ubuntu-latest
     env:
-      # 有没有设置签名钥匙（钥匙本身只交给签名那一步）
-      HAS_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY != '' }}
+      # 有没有设置签名钥匙（钥匙本身只交给签名那一步）。名字叫 UPDATE_SIGNING_KEY 或 CLAUDEPET 都认
+      HAS_SIGNING_KEY: ${{ (secrets.UPDATE_SIGNING_KEY || secrets.CLAUDEPET) != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -77,7 +77,7 @@ jobs:
       - name: 签名 / Sign the update
         if: env.PUBLISH == 'true' && env.HAS_SIGNING_KEY == 'true'
         env:
-          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY || secrets.CLAUDEPET }}
         run: |
           umask 077
           printf '%s\n' "$UPDATE_SIGNING_KEY" | tr -d '\r' > key.pem
