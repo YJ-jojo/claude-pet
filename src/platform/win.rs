@@ -194,7 +194,7 @@ pub fn list_windows() -> Vec<WinInfo> {
         .into_iter()
         .filter(|h| is_app_window(*h) && window_pid(*h) != me)
         .map(info_of)
-        .filter(|w| w.w > 40 && w.h > 40 && !super::is_own_page(&w.title))
+        .filter(|w| w.w > 40 && w.h > 40)
         .collect()
 }
 
@@ -221,11 +221,7 @@ pub fn window_at_point(x: i32, y: i32) -> Option<WinInfo> {
         }
         let r = visible_rect(h);
         if x >= r.left && x < r.right && y >= r.top && y < r.bottom {
-            let w = info_of(h);
-            if super::is_own_page(&w.title) {
-                continue;
-            }
-            return Some(w);
+            return Some(info_of(h));
         }
     }
     None
@@ -243,7 +239,7 @@ pub fn foreground_window() -> Option<WinInfo> {
         if window_pid(h) == my_pid() {
             return None;
         }
-        Some(info_of(h)).filter(|w| !super::is_own_page(&w.title))
+        Some(info_of(h))
     }
 }
 

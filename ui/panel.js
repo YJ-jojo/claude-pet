@@ -449,4 +449,6 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+// 窗口刚建好时要打开的标签页（commands.rs 的 open_panel_tab 写进 window.__PET_TAB__）
+if (window.__PET_TAB__) showTab(window.__PET_TAB__);
 init();
