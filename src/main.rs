@@ -18,7 +18,6 @@ mod state;
 mod talk;
 mod translate;
 mod tts;
-mod webui;
 
 use crate::state::{app, App, HitState, StageGeom};
 use claude::Session;
@@ -282,12 +281,15 @@ fn setup(handle: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     build_tray(handle)?;
     register_hotkeys(handle);
     server::start(cfg.port);
-    webui::debug_print(&webui::url("chat"));
     diag::spawn_startup_watch();
     diag::mark("开始建宠物窗口");
     create_stage(handle)?;
     diag::mark("宠物窗口建好（还没显示，等页面加载完自己摆位置）");
     diag::spawn_perf_sampler(handle.clone());
+    // 测试用：设了 CLAUDEPET_TEST_OPEN_PANEL=标签页，启动后直接打开对话框
+    if let Ok(tab) = std::env::var("CLAUDEPET_TEST_OPEN_PANEL") {
+        commands::open_panel_tab(&tab);
+    }
     // 10 秒后宠物还没出来：记下哪些页面没加载好
     std::thread::spawn(|| {
         std::thread::sleep(Duration::from_secs(10));
@@ -313,18 +315,13 @@ fn setup(handle: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         let found = claude::find_claude();
         plog!("Claude Code：{}", found.as_ref().map(|c| format!("{c:?}")).unwrap_or_else(|| "没找到".into()));
         if found.is_none() {
-            if auto_open_settings() {
-                talk::say("我还没有“脑子”：要装一下 Claude Code。设置页已经在浏览器里打开了，点“一键安装”，不用开终端。", "alert");
-            } else {
-                talk::say("我还没有“脑子”：要装一下 Claude Code。托盘图标右键 → 设置，点“一键安装”。", "alert");
-            }
+            talk::say("我还没有“脑子”：要装一下 Claude Code。托盘图标右键 → 设置，点“一键安装”。", "alert");
             return;
         }
         let logged = desktop::logged_in().await;
         plog!("Claude Code 登录状态：{}", if logged { "已登录" } else { "没登录" });
         if !logged {
-            auto_open_settings();
-            talk::say("Claude Code 装好了，但还没登录。设置页里点“登录”，在弹出的网页上用你的 Max 账号授权一下。", "alert");
+            talk::say("Claude Code 装好了，但还没登录。托盘图标右键 → 设置，点“登录”，在弹出的网页上用你的 Max 账号授权一下。", "alert");
             return;
         }
         let a = app();
@@ -332,23 +329,6 @@ fn setup(handle: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         a.s_chat.warm(false).await;
     });
     Ok(())
-}
-
-/// 启动时缺东西要去设置页：自动在浏览器里打开，但 12 小时内只自动开一次，免得每次启动都弹浏览器
-fn auto_open_settings() -> bool {
-    let mark = app().data_dir.join("auto-settings-opened");
-    let recent = std::fs::metadata(&mark)
-        .and_then(|m| m.modified())
-        .ok()
-        .and_then(|t| t.elapsed().ok())
-        .map(|d| d < Duration::from_secs(12 * 3600))
-        .unwrap_or(false);
-    if recent {
-        return false;
-    }
-    let _ = std::fs::write(&mark, b"");
-    commands::open_panel_tab("settings");
-    true
 }
 
 fn main() {

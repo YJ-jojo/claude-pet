@@ -172,6 +172,12 @@ pub fn js_log(win: String, level: String, msg: String) {
         if win == "stage" {
             crate::diag::startup_done();
         }
+        // 对话框页面后加载好：要打开的标签页再发一次（页面里的监听可能比 init 脚本晚）
+        if win == "panel" {
+            if let Some(tab) = PANEL_TAB.lock().unwrap().clone() {
+                app().emit_panel("open-tab", json!({"tab": tab}));
+            }
+        }
         return;
     }
     let tag = match level.as_str() {
@@ -578,9 +584,56 @@ pub fn open_panel(tab: Option<String>) {
     open_panel_tab(tab.as_deref().unwrap_or("chat"));
 }
 
-/// 对话框在浏览器里打开（见 webui.rs）
+/// 最近一次要打开的标签页
+static PANEL_TAB: Mutex<Option<String>> = Mutex::new(None);
+/// 对话框窗口正在建（别建两个）
+static PANEL_CREATING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// 打开对话框窗口的某个标签页。窗口用到时才建，不拖慢宠物启动；关掉只是藏起来，再开是瞬间的。
+/// 建窗口放在单独的线程里发起：托盘菜单、快捷键这些回调本身在主线程上，在那里直接建会卡住（Tauri 在 Windows 上的限制）。
 pub fn open_panel_tab(tab: &str) {
-    crate::webui::open(tab);
+    let a = app();
+    *PANEL_TAB.lock().unwrap() = Some(tab.to_string());
+    if let Some(w) = a.handle.get_webview_window("panel") {
+        let _ = w.show();
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+        a.emit_panel("open-tab", json!({"tab": tab}));
+        return;
+    }
+    if PANEL_CREATING.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let handle = a.handle.clone();
+    let tab = tab.to_string();
+    std::thread::spawn(move || {
+        let t0 = std::time::Instant::now();
+        let built = tauri::WebviewWindowBuilder::new(&handle, "panel", tauri::WebviewUrl::App("panel.html".into()))
+            .title("Claude 宠物")
+            .inner_size(460.0, 700.0)
+            .min_inner_size(380.0, 480.0)
+            .center()
+            .initialization_script(&format!("window.__PET_TAB__ = {};", serde_json::to_string(&tab).unwrap_or_default()))
+            .build();
+        match built {
+            Ok(w) => {
+                plog!("对话框窗口建好，用了 {} 毫秒", t0.elapsed().as_millis());
+                let w2 = w.clone();
+                w.on_window_event(move |ev| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = ev {
+                        api.prevent_close();
+                        let _ = w2.hide();
+                    }
+                });
+                let _ = w.set_focus();
+            }
+            Err(e) => {
+                plog!("!!! 对话框窗口建不出来：{e}");
+                talk::say("设置窗口打不开，请把日志发给开发者。", "error");
+            }
+        }
+        PANEL_CREATING.store(false, Ordering::SeqCst);
+    });
 }
 
 /// 用默认浏览器打开登录页（只放行 claude.ai / anthropic.com 的网址）

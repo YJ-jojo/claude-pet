@@ -144,14 +144,15 @@ impl App {
         }
     }
 
-    /// 发给浏览器里的对话框（见 webui.rs）
+    /// 发给对话框窗口（没打开就不发）
     pub fn emit_panel(&self, event: &str, payload: Value) {
-        crate::webui::push(event, &payload);
+        if let Some(w) = self.handle.get_webview_window("panel") {
+            let _ = w.emit(event, payload);
+        }
     }
 
-    /// 宠物窗口和浏览器里的对话框都发
+    /// 宠物窗口和对话框都发
     pub fn emit_all(&self, event: &str, payload: Value) {
-        crate::webui::push(event, &payload);
         let _ = self.handle.emit(event, payload);
     }
 
