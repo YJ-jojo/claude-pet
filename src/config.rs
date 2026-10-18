@@ -49,6 +49,10 @@ pub struct Config {
     pub alert_idle: bool,
     /// Claude Code 回答完成时播报
     pub announce_stop: bool,
+    /// 申请权限没处理，过多少秒再提醒一次
+    pub alert_repeat_s: u64,
+    /// 两次“在等你回话”提醒至少隔多少秒
+    pub idle_repeat_s: u64,
 
     /// 呼吸模式："quiet" 只说要紧事 / "normal" / "detailed"
     pub breath_mode: String,
@@ -72,6 +76,10 @@ pub struct Config {
     pub operate_confirm_all: bool,
     /// 先点后演：先把按钮点了，宠物再跑过去做按的动作（点击零等待）
     pub operate_click_first: bool,
+    /// 指给你看时，等你自己点多少秒
+    pub point_wait_s: u64,
+    /// 帮你操作时问你“点不点”，等多少秒没回答算不点
+    pub confirm_wait_s: u64,
     /// 宠物跑动速度（像素/秒）
     pub run_speed: f64,
     /// 空闲时自己到处走走
@@ -88,6 +96,10 @@ pub struct Config {
     pub hotkey_stop: String,
     pub hotkey_chat: String,
 
+    /// 自动检查更新
+    pub update_auto: bool,
+    /// 多少小时检查一次更新
+    pub update_every_h: u64,
     /// 自动更新的下载源，按顺序试，失败就换下一个。"" 是直接连 GitHub，其它是 GitHub 镜像，
     /// 地址拼在 https://github.com/... 前面。下载的东西都要过签名和指纹检查，镜像改不了内容
     pub update_sources: Vec<String>,
@@ -126,6 +138,8 @@ impl Default for Config {
             alert_permission_immediately: true,
             alert_idle: true,
             announce_stop: false,
+            alert_repeat_s: 60,
+            idle_repeat_s: 120,
             breath_mode: "normal".into(),
             breath_interval_ms: 700,
             breath_settle_ms: 200,
@@ -143,6 +157,8 @@ impl Default for Config {
             translate_speak: false,
             operate_confirm_all: false,
             operate_click_first: false,
+            point_wait_s: 20,
+            confirm_wait_s: 30,
             run_speed: 1800.0,
             wander: false,
             hit_relax: true,
@@ -153,6 +169,8 @@ impl Default for Config {
             hotkey_watch: "CommandOrControl+Alt+W".into(),
             hotkey_stop: "CommandOrControl+Alt+Q".into(),
             hotkey_chat: "CommandOrControl+Alt+Space".into(),
+            update_auto: true,
+            update_every_h: 3,
             update_sources: vec!["".into(), "https://ghfast.top/".into(), "https://gh-proxy.com/".into()],
             pet_x: None,
             pet_y: None,

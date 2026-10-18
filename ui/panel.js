@@ -229,6 +229,17 @@ $('#blacklist').addEventListener('change', (e) => {
 
 // ───────────────────────── 设置 ─────────────────────────
 
+// 左边分类，一次只显示一类；记住上次看的那类
+function showCat(cat) {
+  if (!$(`.grp[data-cat="${cat}"]`)) cat = 'account';
+  $$('#cats button').forEach((b) => b.classList.toggle('on', b.dataset.cat === cat));
+  $$('.grp').forEach((g) => g.classList.toggle('on', g.dataset.cat === cat));
+  $('#tab-settings .pane').scrollTop = 0;
+  try { localStorage.setItem('pet-cat', cat); } catch (_) {}
+}
+$$('#cats button').forEach((b) => b.addEventListener('click', () => showCat(b.dataset.cat)));
+try { showCat(localStorage.getItem('pet-cat') || 'account'); } catch (_) { showCat('account'); }
+
 let saveTimer = null, pending = {};
 function save(part, now = false) {
   Object.assign(pending, part);
@@ -307,6 +318,7 @@ $('#btn-test-voice').addEventListener('click', () => invoke('test_voice', { text
 $('#btn-sprites').addEventListener('click', () => invoke('open_sprites_dir'));
 $('#btn-log').addEventListener('click', () => invoke('open_log_dir'));
 $('#btn-quit').addEventListener('click', () => invoke('menu_action', { action: 'quit' }));
+$('#btn-update').addEventListener('click', () => { invoke('menu_action', { action: 'update' }); toast('在检查，结果宠物会告诉你'); });
 
 // 快捷键录制：点进输入框后直接按组合键
 const CODE_NAME = { Space: 'Space', Enter: 'Enter', Tab: 'Tab', Backquote: '`', Minus: '-', Equal: '=', BracketLeft: '[', BracketRight: ']', Backslash: '\\', Semicolon: ';', Quote: "'", Comma: ',', Period: '.', Slash: '/' };
@@ -357,19 +369,19 @@ async function refreshStatus() {
   const row = (k, v, cls = '') => `<span class="k">${k}</span><span class="v ${cls}">${v}</span>`;
   const authLine = (s.auth || '').split('\n').map((l) => l.trim()).filter(Boolean).slice(0, 2).join('；');
   box.innerHTML = s.found
-    ? row('Claude Code', `✅ ${esc(s.version || '已安装')}`) +
+    ? row('版本', `✅ ${esc(s.version || '已安装')}`) +
       row('位置', `<span class="sub">${esc(s.path)}</span>`) +
       row('登录', s.loggedIn ? `✅ ${esc(authLine || '已登录')}` : '⚠ 还没登录（点下面“登录”）', s.loggedIn ? '' : 'bad') +
       row('文字识别', s.ocrLangs && s.ocrLangs.length ? esc(s.ocrLangs.join('、')) : '没有 OCR 语言包（不影响大部分窗口）')
-    : row('Claude Code', '❌ 还没装（点下面“一键安装”）', 'bad');
+    : row('状态', '❌ 还没装（点下面“一键安装”）', 'bad');
   $('#btn-install').hidden = !!s.found;
   $('#btn-login').hidden = !s.found || !!s.loggedIn;
   const d = s.desktop || {};
   dbox.innerHTML =
     row('桌面版', d.installed ? (d.registered ? '✅ 已接入（重开桌面版后生效）' : '⚠ 还没接入') : '没找到 Claude 桌面版的设置文件夹', d.registered ? '' : 'bad') +
     row('确认提醒', s.hooks ? '✅ 已安装' : '还没装', s.hooks ? '' : 'bad');
-  $('#btn-desk').textContent = d.registered ? '重新接入' : '接入 Claude 桌面版';
-  $('#btn-hooks').textContent = s.hooks ? '重新安装提醒' : '安装提醒（Code 标签页 / 终端要你确认时叫你）';
+  $('#btn-desk').textContent = d.registered ? '重新接入' : '接入';
+  $('#btn-hooks').textContent = s.hooks ? '重新安装' : '安装';
 }
 
 async function runBtn(btn, cmd, busy, msgSel = '#cc-msg') {
@@ -428,7 +440,8 @@ async function init() {
     P.edgeVoices = st.edgeVoices || [];
     P.packs = st.packs || ['placeholder'];
     P.flags = { breathing: st.breathing, breathMode: P.cfg.breath_mode, targets: (st.targets || []).filter((t) => t.enabled).length };
-    $('#ver').textContent = `版本 ${st.version}`;
+    $('#ver').textContent = `Claude 宠物 ${st.version}`;
+    $('#ver2').textContent = `现在是 ${st.version}`;
   }
   fillVoices(null);
   renderFlags();

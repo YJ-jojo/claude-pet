@@ -24,7 +24,12 @@ fn aborted() -> bool {
     app().op_abort.load(Ordering::SeqCst)
 }
 
-/// 问用户确认，返回是否同意（30 秒没回答算不同意）
+/// 指给你看时等你自己点多久（设置里可调）
+pub fn point_wait() -> Duration {
+    Duration::from_secs(app().cfg.read().map(|c| c.point_wait_s).unwrap_or(20).clamp(3, 600))
+}
+
+/// 问用户确认，返回是否同意（设置里的秒数内没回答算不同意）
 pub async fn confirm(text: &str) -> bool {
     confirm_custom(text, ("好，点吧", "先别")).await
 }
@@ -35,7 +40,8 @@ pub async fn confirm_custom(text: &str, labels: (&str, &str)) -> bool {
     let (tx, rx) = oneshot::channel();
     a.confirms.lock().unwrap().insert(id.clone(), tx);
     talk::ask_buttons(text, "op", &id, &[(labels.0, true), (labels.1, false)]);
-    let ok = matches!(tokio::time::timeout(Duration::from_secs(30), rx).await, Ok(Ok(true)));
+    let wait = a.cfg.read().map(|c| c.confirm_wait_s).unwrap_or(30).clamp(5, 600);
+    let ok = matches!(tokio::time::timeout(Duration::from_secs(wait), rx).await, Ok(Ok(true)));
     a.confirms.lock().unwrap().remove(&id);
     a.emit_stage("bubble-clear-buttons", serde_json::json!({}));
     ok
@@ -197,7 +203,7 @@ async fn do_step(hwnd: &i64, ui: &platform::UiSnapshot, step: &Value, img_map: O
     let (cx, cy) = (r.x + r.w / 2, r.y + r.h / 2);
     match op {
         "point" => {
-            // 跑过去指着，光圈一直亮，等你自己点（最多 20 秒）
+            // 跑过去指着，光圈一直亮，等你自己点（等多久看设置）
             stage::approach(r, "point").await;
             if aborted() {
                 return Ok(());
@@ -205,7 +211,7 @@ async fn do_step(hwnd: &i64, ui: &platform::UiSnapshot, step: &Value, img_map: O
             stage::point_start(r);
             let s = step["say"].as_str().unwrap_or("在这里！");
             talk::say(s, "op");
-            let result = wait_user_click(r, Duration::from_secs(20)).await;
+            let result = wait_user_click(r, point_wait()).await;
             stage::point_end(result);
         }
         "click" | "double" | "right" => {
