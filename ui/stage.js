@@ -55,6 +55,8 @@ function sizeWorld() {
   worldEl.style.height = S.mon.h + 'px';
 }
 
+const esc = (t) => String(t ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
 function toast(msg, ms = 1600) {
   toastEl.textContent = msg;
   toastEl.classList.add('show');
@@ -859,7 +861,8 @@ function menuHtml() {
     item('breath', '🌬', f.breathing ? '关闭呼吸模式' : '开启呼吸模式', f.breathing ? '<span class="on">●</span>' : kb('hotkey_breath', 'Ctrl+Alt+B')),
     `<div class="seg">${[['quiet', '安静'], ['normal', '正常'], ['detailed', '细讲']].map(([k, n]) => `<span data-act="mode-${k}" class="${mode === k ? 'sel' : ''}">${n}</span>`).join('')}</div>`,
     item('watch', '🎯', '盯着刚才用的窗口', kb('hotkey_watch', 'Ctrl+Alt+W')),
-    item('windows', '🪟', `选择要看的窗口…${f.targets ? `（${f.targets}）` : ''}`),
+    '<div class="cap">点一个窗口，我就盯着它</div>',
+    '<div id="menu-wins"><div class="hint">正在列窗口…</div></div>',
     '<div class="sep"></div>',
     item('operate', '🖐', '帮我操作…'),
     item('translate', '🔤', '框选翻译', kb('hotkey_translate', 'Ctrl+Alt+T')),
@@ -878,14 +881,45 @@ function menuHtml() {
 function openMenu(x, y) {
   menuEl.innerHTML = menuHtml();
   menuEl.classList.add('show');
+  S.menuAt = [x, y];
+  placeMenu();
+  S.menuOpen = true;
+  S.menuLeaveAt = 0;
+  sendRects(now(), true);
+  fillMenuWindows();
+}
+
+/** 菜单摆在右键的位置，超出屏幕就往回收（窗口列表填进来变高后要再摆一次） */
+function placeMenu() {
+  const [x, y] = S.menuAt || [0, 0];
   const w = menuEl.offsetWidth, h = menuEl.offsetHeight;
   const mx = snap(clamp(x + 4, 6, S.mon.w - w - 6));
   const my = snap(clamp(y - 10, 6, S.mon.h - h - 6));
   S.menuX = mx; S.menuY = my;
   menuEl.style.left = mx + 'px';
   menuEl.style.top = my + 'px';
-  S.menuOpen = true;
-  S.menuLeaveAt = 0;
+}
+
+/** 右键菜单里直接列出现在开着的窗口：点一下就盯着它（呼吸模式没开就顺便打开），再点一下取消 */
+const MENU_WINS_MAX = 12;
+async function fillMenuWindows() {
+  const list = await invoke('list_windows');
+  const box = $('#menu-wins');
+  if (!S.menuOpen || !box) return;
+  const wins = (Array.isArray(list) ? list : [])
+    .filter((w) => !w.blocked && w.title && !/^claudepet(\.exe)?$/i.test(w.process))
+    .sort((a, b) => b.watching - a.watching)
+    .slice(0, MENU_WINS_MAX);
+  if (!wins.length) {
+    box.innerHTML = '<div class="hint">没找到窗口</div>';
+  } else {
+    box.innerHTML = wins.map((w) => {
+      const name = w.process.replace(/\.exe$/i, '');
+      return `<div class="item win${w.watching ? ' watching' : ''}" data-win="${w.hwnd}" data-on="${w.watching ? 1 : 0}" title="${esc(w.title)}">`
+        + `<span class="ic">${w.watching ? '👀' : '🪟'}</span><span class="t">${esc(w.title)}</span><span class="p">${esc(name)}</span></div>`;
+    }).join('');
+  }
+  placeMenu();
   sendRects(now(), true);
 }
 
@@ -899,6 +933,16 @@ function closeMenu() {
 menuEl.addEventListener('pointerleave', () => (S.menuLeaveAt = now()));
 menuEl.addEventListener('pointerenter', () => (S.menuLeaveAt = 0));
 menuEl.addEventListener('click', (e) => {
+  const win = e.target.closest('[data-win]');
+  if (win) {
+    const hwnd = Number(win.dataset.win);
+    const on = win.dataset.on !== '1';
+    closeMenu();
+    invoke('set_target', { hwnd, on });
+    if (on && !S.flags.breathing) invoke('toggle_breath', { on: true });
+    toast(on ? '好，我盯着它' : '不盯这个了');
+    return;
+  }
   const el = e.target.closest('[data-act]');
   if (!el) return;
   const action = el.dataset.act;

@@ -279,28 +279,10 @@ pub fn pet_clicked(part: String) {
     }
 }
 
-/// 拖着宠物放到某个窗口上：问要不要盯着它
+/// 拖完宠物：只是挪位置，不再问要不要盯着那个窗口（想盯哪个在右键菜单里点）
 #[tauri::command]
 pub fn drag_end() {
-    let a = app();
-    a.hit.lock().unwrap().capture_all = false;
-    let (px, py) = *a.pet_pos.lock().unwrap();
-    let (_, ph) = crate::stage::pet_size_phys();
-    // 宠物身体中心下面的窗口
-    let Some(win) = platform::window_at_point(px, py - ph / 2) else { return };
-    if a.targets.lock().unwrap().iter().any(|t| t.hwnd == win.hwnd && t.enabled) {
-        return;
-    }
-    if a.cfg().is_blacklisted(&win.process, &win.title) {
-        return;
-    }
-    let title: String = win.title.chars().take(20).collect();
-    tauri::async_runtime::spawn(async move {
-        if crate::operate::confirm_custom(&format!("要我盯着《{title}》吗？"), ("盯着它", "不用")).await {
-            add_target(&win);
-            talk::say("好，我盯着它。", "talk");
-        }
-    });
+    app().hit.lock().unwrap().capture_all = false;
 }
 
 pub fn add_target(win: &WinInfo) {
