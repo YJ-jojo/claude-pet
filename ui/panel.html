@@ -75,126 +75,201 @@
 
   <!-- ───────── 设置 ───────── -->
   <section id="tab-settings" class="tab">
-    <div class="card">
-      <b>宠物的“脑子”：Claude Code</b>
-      <div class="sub">宠物自己看屏幕、讲解、翻译、帮你点，都靠它，走你的 Max 额度。装和登录都在这里点，不用开终端。</div>
-      <div class="kv" id="cc-status"><div class="sub">检查中…</div></div>
-      <div class="row gap wrap">
-        <button id="btn-install" class="primary" hidden>一键安装 Claude Code</button>
-        <button id="btn-login" class="primary" hidden>登录（会打开浏览器）</button>
-        <button id="btn-recheck" class="ghost">重新检查</button>
+    <aside class="cats" id="cats">
+      <button data-cat="account" class="on">账号</button>
+      <button data-cat="link">联动</button>
+      <button data-cat="alert">提醒</button>
+      <button data-cat="voice">声音</button>
+      <button data-cat="look">外观</button>
+      <button data-cat="operate">操作</button>
+      <button data-cat="watch">观察</button>
+      <button data-cat="model">模型</button>
+      <button data-cat="translate">翻译</button>
+      <button data-cat="hotkey">快捷键</button>
+      <button data-cat="update">更新</button>
+      <button data-cat="about">关于</button>
+    </aside>
+    <div class="pane">
+
+    <div class="grp on" data-cat="account">
+      <h2>账号</h2>
+      <div class="card">
+        <div><b>Claude Code</b> <span class="sub">宠物的大脑</span></div>
+        <div class="kv" id="cc-status"><div class="sub">检查中…</div></div>
+        <div class="row gap wrap">
+          <button id="btn-install" class="primary" hidden>一键安装</button>
+          <button id="btn-login" class="primary" hidden>登录</button>
+          <button id="btn-recheck" class="ghost">重新检查</button>
+        </div>
+        <div id="login-box" hidden>
+          <div class="sub">浏览器没打开：<a id="login-url" href="#" target="_blank">打开登录页</a></div>
+          <div class="row gap"><input id="login-code" placeholder="网页给的授权码" /><button id="btn-code">确定</button></div>
+        </div>
+        <details id="setup-details"><summary class="sub">安装记录</summary><pre id="setup-log"></pre></details>
+        <div class="sub" id="cc-msg"></div>
       </div>
-      <div id="login-box" hidden>
-        <div class="sub">浏览器没自己打开的话，点这个：<a id="login-url" href="#" target="_blank">打开登录页</a></div>
-        <div class="sub">网页最后给了一串授权码的话，粘到这里：</div>
-        <div class="row gap"><input id="login-code" placeholder="授权码" /><button id="btn-code">确定</button></div>
+      <div class="card">
+        <label class="field"><span>程序位置</span><input data-k="claude_path" placeholder="留空自动找" /></label>
       </div>
-      <details id="setup-details"><summary class="sub">安装 / 登录记录</summary><pre id="setup-log"></pre></details>
-      <div class="sub" id="cc-msg"></div>
     </div>
 
-    <div class="card">
-      <b>和 Claude 桌面版联动</b>
-      <div class="kv" id="desk-status"><div class="sub">检查中…</div></div>
-      <div class="row gap wrap">
-        <button id="btn-desk" class="primary">接入 Claude 桌面版</button>
-        <button id="btn-undesk" class="ghost">移除</button>
+    <div class="grp" data-cat="link">
+      <h2>联动</h2>
+      <div class="card">
+        <div><b>Claude 桌面版</b> <span class="sub">聊天里能用宠物</span></div>
+        <div class="kv" id="desk-status"><div class="sub">检查中…</div></div>
+        <div class="row gap wrap">
+          <button id="btn-desk" class="primary">接入</button>
+          <button id="btn-undesk" class="ghost">移除</button>
+        </div>
+        <div class="sub">改完要完全退出桌面版再打开</div>
       </div>
-      <div class="sub">接入后，桌面版里的任何聊天都能让 Claude 用宠物：说话、看你的屏幕、指按钮、帮你点和打字。改完要把桌面版完全退出再打开。</div>
-      <div class="row gap wrap" style="margin-top:8px">
-        <button id="btn-hooks">安装提醒（Code 标签页 / 终端要你确认时叫你）</button>
-        <button id="btn-unhooks" class="ghost">移除提醒</button>
-        <button id="btn-mcp" class="ghost">也让终端里的 Claude Code 能指挥宠物</button>
+      <div class="card">
+        <div><b>确认提醒</b> <span class="sub">要你确认时叫你</span></div>
+        <div class="row gap wrap">
+          <button id="btn-hooks">安装</button>
+          <button id="btn-unhooks" class="ghost">移除</button>
+        </div>
+        <div class="sub">只对 Code 标签页和终端有效</div>
       </div>
-      <div class="sub">确认提醒只对 Code 标签页和终端版有效：普通聊天没有对外的提醒接口，宠物收不到那边弹的确认框。</div>
+      <div class="card">
+        <div><b>终端版</b> <span class="sub">终端里能用宠物</span></div>
+        <div class="row gap wrap"><button id="btn-mcp">接入</button></div>
+      </div>
       <div class="sub" id="desk-msg"></div>
-      <label class="field"><span>claude 路径</span><input data-k="claude_path" placeholder="留空自动查找" /></label>
     </div>
 
-    <div class="card">
-      <b>提醒</b>
-      <label class="chk"><input type="checkbox" data-k="alert_permission_immediately" /> Claude 申请权限时立刻提醒</label>
-      <label class="chk"><input type="checkbox" data-k="alert_idle" /> Claude 停下来等我回话时提醒</label>
-      <label class="chk"><input type="checkbox" data-k="announce_stop" /> Claude 每次答完都播报一声</label>
-    </div>
-
-    <div class="card">
-      <b>声音</b>
-      <label class="chk"><input type="checkbox" data-k="tts_enabled" /> 开口说话</label>
-      <label class="chk"><input type="checkbox" data-k="bubble_enabled" /> 讲话时显示气泡</label>
-      <label class="field"><span>引擎</span>
-        <select data-k="tts_engine">
-          <option value="edge">微软自然音色（在线，好听）</option>
-          <option value="system">Windows 自带（离线）</option>
-        </select>
-      </label>
-      <label class="field" id="f-edge"><span>音色</span><select data-k="edge_voice" id="edge-voice"></select></label>
-      <label class="field" id="f-sys"><span>系统音色</span><select data-k="system_voice" id="sys-voice"><option value="">默认</option></select></label>
-      <label class="field"><span>语速 <em id="rate-v"></em></span><input type="range" data-k="tts_rate" data-num min="0.8" max="2" step="0.05" /></label>
-      <div class="row gap"><button id="btn-test-voice">试听</button></div>
-    </div>
-
-    <div class="card">
-      <b>宠物</b>
-      <label class="field"><span>名字</span><input data-k="pet_name" /></label>
-      <label class="field"><span>大小 <em id="h-v"></em></span><input type="range" data-k="pet_height" data-num data-int min="140" max="400" step="10" /></label>
-      <label class="field"><span>形象包</span><select data-k="sprite_pack" id="packs"></select></label>
-      <div class="row gap"><button class="ghost" id="btn-sprites">打开形象包文件夹</button></div>
-      <label class="field"><span>跑动速度 <em id="spd-v"></em></span><input type="range" data-k="run_speed" data-num min="800" max="5000" step="100" /></label>
-      <label class="chk"><input type="checkbox" data-k="wander" /> 闲着时自己到处走走</label>
-      <label class="chk"><input type="checkbox" data-k="operate_confirm_all" /> 帮我操作时每一步都先问我</label>
-      <label class="chk"><input type="checkbox" data-k="operate_click_first" /> 先点后演（先点按钮，宠物再跑过去补动作，最快）</label>
-    </div>
-
-    <div class="card">
-      <b>模型</b>
-      <div class="sub">都走你 Claude Code 登录的账号（Max 额度）。越小越快。</div>
-      <label class="field"><span>呼吸模式讲解</span><input data-k="breath_model" list="models" /></label>
-      <label class="field"><span>聊天 / 看一眼</span><input data-k="chat_model" list="models" /></label>
-      <label class="field"><span>帮我操作</span><input data-k="operate_model" list="models" /></label>
-      <label class="field"><span>翻译</span><input data-k="translate_model" list="models" /></label>
-      <datalist id="models"><option value="haiku"></option><option value="sonnet"></option><option value="opus"></option></datalist>
-    </div>
-
-    <div class="card">
-      <b>翻译</b>
-      <label class="field"><span>翻成</span>
-        <select data-k="translate_target">
-          <option value="zh">中文（外文翻中文，中文翻英文）</option>
-          <option value="en">英文</option>
-          <option value="ja">日文</option>
-          <option value="ko">韩文</option>
-        </select>
-      </label>
-      <label class="chk"><input type="checkbox" data-k="translate_speak" /> 翻完念出来</label>
-    </div>
-
-    <div class="card">
-      <b>呼吸模式（高级）</b>
-      <label class="field"><span>检查间隔（毫秒）</span><input type="number" data-k="breath_interval_ms" data-num data-int min="200" max="5000" step="50" /></label>
-      <label class="field"><span>画面停稳多久再讲</span><input type="number" data-k="breath_settle_ms" data-num data-int min="0" max="5000" step="50" /></label>
-      <label class="field"><span>两次开口最少间隔</span><input type="number" data-k="breath_min_gap_ms" data-num data-int min="0" max="60000" step="100" /></label>
-    </div>
-
-    <div class="card">
-      <b>快捷键</b>
-      <div class="sub">点一下输入框，再按下想要的组合键。删空 = 不用这个快捷键。</div>
-      <label class="field"><span>框选翻译</span><input class="hk" data-k="hotkey_translate" /></label>
-      <label class="field"><span>看一眼</span><input class="hk" data-k="hotkey_look" /></label>
-      <label class="field"><span>呼吸模式开关</span><input class="hk" data-k="hotkey_breath" /></label>
-      <label class="field"><span>盯着当前窗口</span><input class="hk" data-k="hotkey_watch" /></label>
-      <label class="field"><span>闭嘴并停手</span><input class="hk" data-k="hotkey_stop" /></label>
-      <label class="field"><span>打开对话框</span><input class="hk" data-k="hotkey_chat" /></label>
-    </div>
-
-    <div class="card">
-      <b>其它</b>
-      <label class="field"><span>本地端口（改后重启生效）</span><input type="number" data-k="port" data-num data-int min="1024" max="65535" /></label>
-      <div class="row gap wrap">
-        <button class="ghost" id="btn-log">打开日志文件夹</button>
-        <button class="ghost danger" id="btn-quit">退出宠物</button>
+    <div class="grp" data-cat="alert">
+      <h2>提醒</h2>
+      <div class="card">
+        <label class="chk"><input type="checkbox" data-k="alert_permission_immediately" /> 申请权限时立刻提醒</label>
+        <label class="chk"><input type="checkbox" data-k="alert_idle" /> 等你回话时提醒</label>
+        <label class="chk"><input type="checkbox" data-k="announce_stop" /> 每次答完播报</label>
       </div>
-      <div class="sub" id="ver"></div>
+      <div class="card">
+        <label class="field"><span>没确认再提醒间隔</span><span class="num"><input type="number" data-k="alert_repeat_s" data-num data-int min="5" max="3600" step="5" /><i>秒</i></span></label>
+        <label class="field"><span>回话提醒间隔</span><span class="num"><input type="number" data-k="idle_repeat_s" data-num data-int min="5" max="3600" step="10" /><i>秒</i></span></label>
+      </div>
+    </div>
+
+    <div class="grp" data-cat="voice">
+      <h2>声音</h2>
+      <div class="card">
+        <label class="chk"><input type="checkbox" data-k="tts_enabled" /> 开口说话</label>
+        <label class="chk"><input type="checkbox" data-k="bubble_enabled" /> 说话时显示气泡</label>
+      </div>
+      <div class="card">
+        <label class="field"><span>引擎</span>
+          <select data-k="tts_engine">
+            <option value="edge">微软在线（好听）</option>
+            <option value="system">Windows 自带（离线）</option>
+          </select>
+        </label>
+        <label class="field" id="f-edge"><span>音色</span><select data-k="edge_voice" id="edge-voice"></select></label>
+        <label class="field" id="f-sys"><span>音色</span><select data-k="system_voice" id="sys-voice"><option value="">默认</option></select></label>
+        <label class="field"><span>语速 <em id="rate-v"></em></span><input type="range" data-k="tts_rate" data-num min="0.8" max="2" step="0.05" /></label>
+        <div class="row gap"><button id="btn-test-voice">试听</button></div>
+      </div>
+    </div>
+
+    <div class="grp" data-cat="look">
+      <h2>外观</h2>
+      <div class="card">
+        <label class="field"><span>名字</span><input data-k="pet_name" /></label>
+        <label class="field"><span>大小 <em id="h-v"></em></span><input type="range" data-k="pet_height" data-num data-int min="140" max="400" step="10" /></label>
+        <label class="field"><span>形象</span><select data-k="sprite_pack" id="packs"></select></label>
+        <div class="row gap"><button class="ghost" id="btn-sprites">打开形象包文件夹</button></div>
+      </div>
+      <div class="card">
+        <label class="field"><span>跑动速度 <em id="spd-v"></em></span><input type="range" data-k="run_speed" data-num min="800" max="5000" step="100" /></label>
+        <label class="chk"><input type="checkbox" data-k="wander" /> 闲着时到处走走</label>
+      </div>
+    </div>
+
+    <div class="grp" data-cat="operate">
+      <h2>操作</h2>
+      <div class="card">
+        <label class="chk"><input type="checkbox" data-k="operate_confirm_all" /> 每一步都先问我</label>
+        <label class="chk"><input type="checkbox" data-k="operate_click_first" /> 先点后演 <span class="sub">最快</span></label>
+      </div>
+      <div class="card">
+        <label class="field"><span>指路等我点</span><span class="num"><input type="number" data-k="point_wait_s" data-num data-int min="3" max="600" step="5" /><i>秒</i></span></label>
+        <label class="field"><span>问我时等</span><span class="num"><input type="number" data-k="confirm_wait_s" data-num data-int min="5" max="600" step="5" /><i>秒</i></span></label>
+      </div>
+    </div>
+
+    <div class="grp" data-cat="watch">
+      <h2>观察</h2>
+      <div class="sub">呼吸模式的节奏；要看哪些窗口在“观察”页选</div>
+      <div class="card">
+        <label class="field"><span>检查间隔</span><span class="num"><input type="number" data-k="breath_interval_ms" data-num data-int min="200" max="5000" step="50" /><i>毫秒</i></span></label>
+        <label class="field"><span>停稳再讲</span><span class="num"><input type="number" data-k="breath_settle_ms" data-num data-int min="0" max="5000" step="50" /><i>毫秒</i></span></label>
+        <label class="field"><span>开口最短间隔</span><span class="num"><input type="number" data-k="breath_min_gap_ms" data-num data-int min="0" max="60000" step="100" /><i>毫秒</i></span></label>
+      </div>
+    </div>
+
+    <div class="grp" data-cat="model">
+      <h2>模型</h2>
+      <div class="sub">走 Max 额度，越小越快</div>
+      <div class="card">
+        <label class="field"><span>呼吸模式</span><input data-k="breath_model" list="models" /></label>
+        <label class="field"><span>聊天、看一眼</span><input data-k="chat_model" list="models" /></label>
+        <label class="field"><span>帮我操作</span><input data-k="operate_model" list="models" /></label>
+        <label class="field"><span>翻译</span><input data-k="translate_model" list="models" /></label>
+        <datalist id="models"><option value="haiku"></option><option value="sonnet"></option><option value="opus"></option></datalist>
+      </div>
+    </div>
+
+    <div class="grp" data-cat="translate">
+      <h2>翻译</h2>
+      <div class="card">
+        <label class="field"><span>翻成</span>
+          <select data-k="translate_target">
+            <option value="zh">中文（中文翻英文）</option>
+            <option value="en">英文</option>
+            <option value="ja">日文</option>
+            <option value="ko">韩文</option>
+          </select>
+        </label>
+        <label class="chk"><input type="checkbox" data-k="translate_speak" /> 翻完念出来</label>
+      </div>
+    </div>
+
+    <div class="grp" data-cat="hotkey">
+      <h2>快捷键</h2>
+      <div class="sub">点框再按组合键，Backspace 清空</div>
+      <div class="card">
+        <label class="field"><span>框选翻译</span><input class="hk" data-k="hotkey_translate" /></label>
+        <label class="field"><span>看一眼</span><input class="hk" data-k="hotkey_look" /></label>
+        <label class="field"><span>呼吸模式</span><input class="hk" data-k="hotkey_breath" /></label>
+        <label class="field"><span>盯当前窗口</span><input class="hk" data-k="hotkey_watch" /></label>
+        <label class="field"><span>闭嘴停手</span><input class="hk" data-k="hotkey_stop" /></label>
+        <label class="field"><span>打开对话框</span><input class="hk" data-k="hotkey_chat" /></label>
+      </div>
+    </div>
+
+    <div class="grp" data-cat="update">
+      <h2>更新</h2>
+      <div class="card">
+        <label class="chk"><input type="checkbox" data-k="update_auto" /> 自动更新</label>
+        <label class="field"><span>检查间隔</span><span class="num"><input type="number" data-k="update_every_h" data-num data-int min="1" max="168" step="1" /><i>小时</i></span></label>
+        <div class="row gap"><button id="btn-update">现在检查</button><span class="sub" id="ver2"></span></div>
+      </div>
+    </div>
+
+    <div class="grp" data-cat="about">
+      <h2>关于</h2>
+      <div class="card">
+        <div class="sub" id="ver"></div>
+        <label class="field"><span>本地端口</span><input type="number" data-k="port" data-num data-int min="1024" max="65535" /></label>
+        <div class="sub">端口改后重启生效</div>
+        <div class="row gap wrap">
+          <button class="ghost" id="btn-log">打开日志文件夹</button>
+          <button class="ghost danger" id="btn-quit">退出宠物</button>
+        </div>
+      </div>
+    </div>
+
     </div>
   </section>
 

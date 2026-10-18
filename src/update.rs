@@ -27,9 +27,8 @@ const EXE_NAME: &str = "ClaudePet.exe";
 const OLD_NAME: &str = "ClaudePet.old.exe";
 const NEW_NAME: &str = "ClaudePet.exe.new";
 const KEY_FILE: &str = "update-key.pub";
-/// 启动后多久第一次检查、之后多久查一次
+/// 启动后多久第一次检查（之后多久查一次在设置里）
 const FIRST_CHECK: Duration = Duration::from_secs(30);
-const EVERY: Duration = Duration::from_secs(3 * 3600);
 
 static RUNNING: AtomicBool = AtomicBool::new(false);
 /// 已经有钥匙时，第一次点“生成”的时间（30 秒内再点一次才真的换）
@@ -190,9 +189,16 @@ pub fn spawn_checker() {
         .name("update".into())
         .spawn(|| {
             std::thread::sleep(FIRST_CHECK);
+            let mut last: Option<std::time::Instant> = None;
             loop {
-                check_and_apply(false);
-                std::thread::sleep(EVERY);
+                let (auto, every_h) = app().cfg.read().map(|c| (c.update_auto, c.update_every_h)).unwrap_or((true, 3));
+                let every = Duration::from_secs(every_h.clamp(1, 168) * 3600);
+                if auto && last.map_or(true, |t| t.elapsed() >= every) {
+                    check_and_apply(false);
+                    last = Some(std::time::Instant::now());
+                }
+                // 每分钟看一眼设置，改了间隔或开关马上生效
+                std::thread::sleep(Duration::from_secs(60));
             }
         })
         .ok();

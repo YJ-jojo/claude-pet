@@ -198,13 +198,13 @@ fn on_hook(v: &Value) {
                     // 立即提醒已经说过的，这里就不重复了
                     if !cfg.alert_permission_immediately || first_time(format!("perm:{sid}"), Duration::from_secs(4)) {
                         alert(&format!("{who}{}", notification_cn(msg)), None);
-                    } else if first_time(format!("perm-again:{sid}"), Duration::from_secs(60)) {
+                    } else if first_time(format!("perm-again:{sid}"), Duration::from_secs(cfg.alert_repeat_s.max(5))) {
                         // 过了一会儿你还没处理，再轻轻提醒一次
                         alert(&format!("{who}还在等你确认哦"), None);
                     }
                 }
                 "idle_prompt" => {
-                    if cfg.alert_idle && first_time(format!("idle:{sid}"), Duration::from_secs(120)) {
+                    if cfg.alert_idle && first_time(format!("idle:{sid}"), Duration::from_secs(cfg.idle_repeat_s.max(5))) {
                         alert(&format!("{who}做完了，在等你回话"), None);
                     }
                 }
@@ -263,7 +263,7 @@ fn tools() -> Value {
         },
         {
             "name": "pet_point",
-            "description": "让桌面宠物跑到一个按钮/元素旁边指给用户看（不点击，等用户自己点，最多 20 秒）。",
+            "description": "让桌面宠物跑到一个按钮/元素旁边指给用户看（不点击，等用户自己点，等多久在宠物设置里调，默认 20 秒）。",
             "inputSchema": {"type": "object", "properties": {
                 "element": {"type": "integer", "description": "pet_look 返回的元素编号"},
                 "name": {"type": "string", "description": "没有编号时：元素名字里包含的文字，比如“设置”"},
@@ -426,10 +426,11 @@ fn call_tool(name: &Value, args: &Value) -> Value {
                 crate::stage::approach(r, "point").await;
                 crate::stage::point_start(r);
                 talk::say(&say, "op");
-                let result = crate::operate::wait_user_click(r, Duration::from_secs(20)).await;
+                let result = crate::operate::wait_user_click(r, crate::operate::point_wait()).await;
                 crate::stage::point_end(result);
             });
-            text_result(&format!("宠物跑过去指着了：{label}。它会等用户自己点（最多 20 秒）。"), false)
+            let wait = crate::operate::point_wait().as_secs();
+            text_result(&format!("宠物跑过去指着了：{label}。它会等用户自己点（最多 {wait} 秒）。"), false)
         }
         "pet_act" => {
             let win = match pick_window(&args["window"], true) {

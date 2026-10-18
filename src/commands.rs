@@ -610,7 +610,7 @@ pub fn open_panel_tab(tab: &str) {
         let t0 = std::time::Instant::now();
         let built = tauri::WebviewWindowBuilder::new(&handle, "panel", tauri::WebviewUrl::App("panel.html".into()))
             .title("Claude 宠物")
-            .inner_size(460.0, 700.0)
+            .inner_size(640.0, 700.0)
             .min_inner_size(380.0, 480.0)
             .center()
             .initialization_script(&format!("window.__PET_TAB__ = {};", serde_json::to_string(&tab).unwrap_or_default()))
@@ -707,6 +707,7 @@ pub fn menu_action(action: String) {
         "chat" => open_panel_tab("chat"),
         "settings" => open_panel_tab("settings"),
         "translate" => crate::translate::begin(),
+        "update" => crate::update::check_now(),
         "shutup" => stop_all(),
         "voice" => {
             let on = !a.cfg().tts_enabled;
