@@ -263,6 +263,13 @@ html, body {
 #menu .item .ic { width: 18px; text-align: center; }
 #menu .item .kb { margin-left: auto; color: #8a8a90; font-size: 11.5px; }
 #menu .item .on { margin-left: auto; color: var(--breath); font-weight: 700; }
+#menu .cap { padding: 4px 10px 2px 38px; color: #8a8a90; font-size: 11.5px; }
+#menu-wins { max-height: 260px; overflow-y: auto; }
+#menu-wins .hint { padding: 4px 10px 6px 38px; color: #8a8a90; font-size: 12px; }
+#menu .item.win { padding: 5px 10px; max-width: 320px; }
+#menu .item.win .t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#menu .item.win .p { color: #8a8a90; font-size: 11px; flex: none; }
+#menu .item.win.watching { background: rgba(43,179,163,.12); }
 #menu .sep { height: 1px; background: var(--line); margin: 5px 6px; }
 #menu .seg { display: flex; gap: 4px; padding: 4px 8px 6px 36px; }
 #menu .seg span { flex: 1; text-align: center; padding: 4px 0; border-radius: 7px; background: var(--paper-2); cursor: pointer; font-size: 12.5px; }
