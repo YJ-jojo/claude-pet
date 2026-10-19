@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-const CFG_REV: u32 = 1;
+const CFG_REV: u32 = 2;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -86,7 +86,7 @@ pub struct Config {
     pub wander: bool,
     /// 鼠标离宠物远时让宠物窗口不穿透（更省；万一宠物附近的东西点不到，关掉它）
     pub hit_relax: bool,
-    /// 截图、录屏、共享屏幕时不拍进宠物（也让呼吸模式不把宠物自己的动作当成画面变化）
+    /// 截图、录屏、共享屏幕时不拍进宠物。默认关：有的电脑（比如装了远程串流的虚拟显示器）开着它，宠物会直接显示成一块黑
     pub hide_from_capture: bool,
 
     pub hotkey_translate: String,
@@ -162,7 +162,7 @@ impl Default for Config {
             run_speed: 1800.0,
             wander: false,
             hit_relax: true,
-            hide_from_capture: true,
+            hide_from_capture: false,
             hotkey_translate: "CommandOrControl+Alt+T".into(),
             hotkey_look: "CommandOrControl+Alt+E".into(),
             hotkey_breath: "CommandOrControl+Alt+B".into(),
@@ -201,6 +201,10 @@ impl Config {
             if self.sprite_pack == "placeholder" || self.sprite_pack == "叶瞬光-试用" {
                 self.sprite_pack = "叶瞬光".into();
             }
+        }
+        // 0.3.6 及以前防截图默认开、设置里也没有开关：一律换成新默认（关）
+        if self.cfg_rev < 2 {
+            self.hide_from_capture = false;
         }
         self.cfg_rev = CFG_REV;
     }
@@ -249,5 +253,12 @@ mod tests {
         let mut new: Config = serde_json::from_str(r#"{"cfg_rev":1,"breath_settle_ms":350,"sprite_pack":"placeholder"}"#).unwrap();
         new.migrate();
         assert_eq!((new.breath_settle_ms, new.sprite_pack.as_str()), (350, "placeholder"));
+        // 0.3.6 的配置：防截图换成关；之后用户自己打开的保持打开
+        let mut v036: Config = serde_json::from_str(r#"{"cfg_rev":1,"hide_from_capture":true}"#).unwrap();
+        v036.migrate();
+        assert!(!v036.hide_from_capture);
+        let mut on: Config = serde_json::from_str(r#"{"cfg_rev":2,"hide_from_capture":true}"#).unwrap();
+        on.migrate();
+        assert!(on.hide_from_capture);
     }
 }
