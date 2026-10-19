@@ -98,7 +98,7 @@ pub fn apply_capture_flag() {
     #[cfg(windows)]
     {
         let a = app();
-        let hide = a.cfg.read().map(|c| c.hide_from_capture).unwrap_or(true);
+        let hide = a.cfg.read().map(|c| c.hide_from_capture).unwrap_or(false);
         if let Some(w) = a.handle.get_webview_window("stage") {
             if let Ok(h) = w.hwnd() {
                 platform::exclude_from_capture(h.0 as isize as i64, hide);

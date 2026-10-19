@@ -295,7 +295,11 @@ pub fn capture_visible(hwnd: i64) -> Option<Bitmap> {
         return None;
     }
     let me = my_pid();
-    // 抽 9 个点：每个点最上面的窗口都得是它自己（或者是本程序的窗口，那些不会被拍进去）
+    // 宠物没开防截图时会被拍进去：压在这个窗口上就不直接拷屏幕，让它自己画（不然宠物一动就当成画面变了）
+    if own_window_in_capture(r) {
+        return None;
+    }
+    // 抽 9 个点：每个点最上面的窗口都得是它自己（或者是本程序的窗口）
     for fy in [0.12f32, 0.5, 0.88] {
         for fx in [0.12f32, 0.5, 0.88] {
             let pt = POINT { x: r.left + (w as f32 * fx) as i32, y: r.top + (hh as f32 * fy) as i32 };
@@ -313,6 +317,25 @@ pub fn capture_visible(hwnd: i64) -> Option<Bitmap> {
         }
     }
     capture_screen_rect_plain(r.left, r.top, w, hh)
+}
+
+/// 本程序有没有会被截图拍进去的窗口压在 r 上（开着防截图的窗口不算）
+fn own_window_in_capture(r: RECT) -> bool {
+    let me = my_pid();
+    enum_top_windows().into_iter().any(|h| unsafe {
+        if window_pid(h) != me || !IsWindowVisible(h).as_bool() {
+            return false;
+        }
+        let mut aff = 0u32;
+        if GetWindowDisplayAffinity(h, &mut aff).is_ok() && aff == WDA_EXCLUDEFROMCAPTURE.0 {
+            return false;
+        }
+        let mut wr = RECT::default();
+        if GetWindowRect(h, &mut wr).is_err() {
+            return false;
+        }
+        wr.left < r.right && wr.right > r.left && wr.top < r.bottom && wr.bottom > r.top
+    })
 }
 
 /// 和 capture_screen_rect 一样，但不带 CAPTUREBLT（带它会让鼠标指针闪）
