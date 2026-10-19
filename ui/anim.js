@@ -105,7 +105,7 @@ class PetAnim {
   }
 
   reset() {
-    for (const c of Object.values(this.clips || {})) if (c.video) { c.video.pause(); c.video.remove(); if (c.rev) c.rev.remove(); }
+    for (const c of Object.values(this.clips || {})) if (c.video) { c.video.pause(); c.video.remove(); if (c.alt) c.alt.remove(); if (c.rev) c.rev.remove(); }
     for (const u of this.objUrls || []) URL.revokeObjectURL(u);
     this.objUrls = [];
     this.clips = {};
@@ -145,8 +145,12 @@ class PetAnim {
       };
       if (def.video) {
         clip.kind = 'video';
-        clip.video = this._video(root + def.video, clip.loop === true);
-        if (def.reverse) clip.rev = this._video(root + def.reverse, false);
+        // 循环动作用两个视频轮流播：浏览器自带的 loop 回到开头时要跳转，会停顿 3、4 帧；
+        // 一个播完马上换另一个（已经停在第一帧），接缝处不卡
+        clip.video = this._video(root + def.video);
+        if (clip.loop === true) clip.alt = this._video(root + def.video);
+        clip.cur = clip.video;
+        if (def.reverse) clip.rev = this._video(root + def.reverse);
         clip.video.addEventListener('loadeddata', () => {
           clip.w = clip.video.videoWidth; clip.h = clip.video.videoHeight; clip.ready = true;
         }, { once: true });
@@ -201,13 +205,12 @@ class PetAnim {
       .catch(() => { el.src = url; return url; });
   }
 
-  _video(url, loop) {
+  _video(url) {
     const v = document.createElement('video');
     this._src(v, url);
     v.muted = true;
     v.playsInline = true;
     v.preload = 'auto';
-    v.loop = loop;
     if (this.direct) this._directStyle(v);
     this.vbox.appendChild(v);
     // 视频出了新的一帧才重画画布（显示器 144Hz 时不用每秒转换 144 次）
@@ -231,7 +234,7 @@ class PetAnim {
     this.vbox.style.cssText = 'position:absolute;inset:0;pointer-events:none';
     this.canvas.parentNode.insertBefore(this.vbox, this.canvas);
     for (const c of Object.values(this.clips)) {
-      for (const v of [c.video, c.rev]) if (v) this._directStyle(v);
+      for (const v of [c.video, c.alt, c.rev]) if (v) this._directStyle(v);
     }
     this.shown = null; // 下一帧按新方式重新摆
   }
@@ -556,7 +559,7 @@ class PetAnim {
       const direct = this.direct && want.clip.kind === 'video';
       if (this.direct) {
         for (const c of Object.values(this.clips)) {
-          for (const v of [c.video, c.rev]) if (v) v.style.display = direct && v === media ? 'block' : 'none';
+          for (const v of [c.video, c.alt, c.rev]) if (v) v.style.display = direct && v === media ? 'block' : 'none';
         }
       }
       if (want.clip.kind === 'img') {
@@ -583,7 +586,11 @@ class PetAnim {
       const hitAt = this._hitMs(shot, want, dur);
       if (shot.opts.onHit && !shot.hitDone && el >= hitAt) { shot.hitDone = true; shot.opts.onHit(); }
       const endless = want.css === null && want.clip.loop && !shot.opts.ms;
-      if (!endless && el >= dur) {
+      // 视频单次动作按视频真的播完来算：开始播放有几十毫秒延迟，按时钟算会在最后一帧上停一下
+      const m = this.shown.media;
+      const vidEnd = want.css === null && !shot.opts.ms && m && !reverse && want.clip.kind === 'video';
+      const over = vidEnd ? m.ended || el >= dur + 1000 : el >= dur;
+      if (!endless && over) {
         // 这一帧保持最后的画面，下一帧再换：让接下来的动作（比如转身后开跑）有机会先排上
         this.shot = null;
         if (shot.opts.turnTo) this.pose = shot.opts.turnTo;
@@ -593,6 +600,7 @@ class PetAnim {
     }
 
     // 4. 画当前帧
+    this._loopSwap();
     this._draw(want.clip, t - this.shown.start, reverse, !!shot, this.shown.media);
   }
 
@@ -605,7 +613,21 @@ class PetAnim {
 
   _media(clip, reverse) {
     if (!clip || clip.kind !== 'video') return null;
-    return reverse && clip.rev ? clip.rev : clip.video;
+    return reverse && clip.rev ? clip.rev : clip.cur || clip.video;
+  }
+
+  /** 循环视频播到头：换成另一个停在第一帧的视频接着播，播完的这个倒回开头备用 */
+  _loopSwap() {
+    const s = this.shown, c = s && s.clip, m = s && s.media;
+    if (!m || !c.alt || m === c.rev || m.paused && !m.ended) return;
+    if (!m.ended && !(m.duration > 0 && m.currentTime >= m.duration - 0.5 / c.fps)) return;
+    const next = m === c.video ? c.alt : c.video;
+    try { if (next.currentTime > 0.001) next.currentTime = 0; } catch (e) { /* 还没加载好 */ }
+    next.play().catch(() => {});
+    c.cur = s.media = next;
+    if (this.direct) { next.style.display = 'block'; m.style.display = 'none'; }
+    m.pause();
+    try { m.currentTime = 0; } catch (e) { /* 忽略 */ }
   }
 
   _draw(c, elapsed, reverse, isShot, media) {
@@ -642,6 +664,8 @@ class PetAnim {
     if (!sw || !sh) return;
     const dh = H, dw = (sw * H) / sh;
     this.ctx.clearRect(0, 0, W, H);
+    // 素材是 600 像素的大图，缩小时用高质量缩放，不然边缘发糊、有锯齿
+    this.ctx.imageSmoothingQuality = 'high';
     this.ctx.drawImage(src, (W - dw) / 2, 0, dw, dh);
     if (c.kind === 'video') this._checkCanvas(src);
   }
@@ -652,6 +676,7 @@ class PetAnim {
     p.height = this.canvas.height;
     const ctx = this.pctx;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.imageSmoothingQuality = 'high';
     ctx.clearRect(0, 0, p.width, p.height);
     // 和 #pet-flip 一样以脚底为轴镜像
     if (this._flip) ctx.setTransform(-1, 0, 0, 1, 2 * (this.anchorX ?? 0.5) * p.width, 0);
