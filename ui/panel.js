@@ -285,6 +285,7 @@ function labels() {
   const c = P.cfg;
   $('#rate-v').textContent = `${Number(c.tts_rate || 1).toFixed(2)}×`;
   $('#h-v').textContent = `${c.pet_height || 240}px`;
+  $('#bs-v').textContent = `${Math.round((c.bubble_scale || 1) * 100)}%`;
   $('#spd-v').textContent = `${c.run_speed || 2600}`;
   const edge = (c.tts_engine || 'edge') === 'edge';
   $('#f-edge').style.display = edge ? '' : 'none';

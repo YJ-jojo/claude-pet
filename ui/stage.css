@@ -61,14 +61,14 @@ html, body {
   position: absolute; left: 8%; right: 8%; bottom: -10px; height: 26px;
   border-radius: 50%;
   border: 2px solid var(--breath);
-  box-shadow: 0 0 18px var(--breath), inset 0 0 10px rgba(43,179,163,.5);
+  box-shadow: 0 0 8px var(--breath), inset 0 0 5px rgba(43,179,163,.4);
   opacity: 0; pointer-events: none;
   transform: scale(.8);
 }
 #pet.breathing #pet-ring { animation: ring 2.6s ease-in-out infinite; }
 @keyframes ring {
   0%, 100% { opacity: .25; transform: scale(.82); }
-  50% { opacity: .9; transform: scale(1.04); }
+  50% { opacity: .7; transform: scale(.94); }
 }
 #pet.breathing #pet-body img { animation: glow 2.6s ease-in-out infinite; }
 @keyframes glow {
@@ -207,11 +207,13 @@ html, body {
 /* ───────── 气泡 ───────── */
 #bubble {
   position: absolute; left: 0; top: 0;
-  max-width: 340px; min-width: 64px;
-  padding: 10px 14px 11px;
+  /* 尺寸都用 em：设置里的“气泡大小”只改字号（--bs），整个气泡跟着缩放 */
+  font-size: calc(14.5px * var(--bs, 1));
+  max-width: 23.5em; min-width: 4.4em;
+  padding: .69em .97em .76em;
   background: var(--paper); color: var(--ink);
-  border-radius: 16px; box-shadow: var(--shadow);
-  font-size: 14.5px; line-height: 1.55; letter-spacing: .2px;
+  border-radius: 1.1em; box-shadow: var(--shadow);
+  line-height: 1.55; letter-spacing: .2px;
   will-change: transform, opacity;
   opacity: 0; pointer-events: none;
   transition: opacity .16s ease-out;
@@ -225,13 +227,13 @@ html, body {
   border-right: inherit; border-bottom: inherit;
   border-bottom-right-radius: 3px;
 }
-#bubble .tag { font-size: 11px; font-weight: 600; margin-bottom: 2px; letter-spacing: .5px; }
-#bubble .text { max-height: 210px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; scrollbar-width: thin; }
+#bubble .tag { font-size: .76em; font-weight: 600; margin-bottom: 2px; letter-spacing: .5px; }
+#bubble .text { max-height: 14.5em; overflow-y: auto; white-space: pre-wrap; word-break: break-word; scrollbar-width: thin; }
 #bubble .text::-webkit-scrollbar { width: 4px; }
 #bubble .text::-webkit-scrollbar-thumb { background: rgba(0,0,0,.15); border-radius: 2px; }
-#bubble .btns { display: flex; gap: 8px; margin-top: 9px; }
+#bubble .btns { display: flex; gap: .55em; margin-top: .62em; }
 #bubble .btns button {
-  flex: 1; border: 0; border-radius: 10px; padding: 7px 10px; font: inherit; font-size: 13.5px;
+  flex: 1; border: 0; border-radius: .7em; padding: .5em .7em; font: inherit; font-size: .93em;
   cursor: pointer; background: var(--paper-2); color: var(--ink); transition: transform .08s, background .12s;
 }
 #bubble .btns button.yes { background: var(--accent); color: #fff; }

@@ -952,9 +952,16 @@ menuEl.addEventListener('click', (e) => {
 });
 // ───────────────────────── 后端事件 ─────────────────────────
 
+/** 气泡大小（设置里可调）：气泡里的尺寸都按字号算，改字号就整体缩放 */
+function applyBubbleScale() {
+  const s = Math.min(1.3, Math.max(0.7, Number(S.cfg.bubble_scale) || 1));
+  document.documentElement.style.setProperty('--bs', String(s));
+}
+
 function applyConfig(c) {
   const oldH = S.cfg.pet_height, oldPack = S.cfg.sprite_pack;
   S.cfg = Object.assign({}, S.cfg, c);
+  applyBubbleScale();
   const needH = Math.ceil((S.cfg.pet_height || 240) * (window.devicePixelRatio || 1));
   if (oldPack !== undefined && oldPack !== S.cfg.sprite_pack) loadPack(S.cfg.sprite_pack, S.packBase);
   else if (needH > S.decodeH * 1.15) loadPack(S.cfg.sprite_pack, S.packBase); // 放大了很多：按新尺寸重新解码，保持清晰
@@ -972,6 +979,7 @@ async function init() {
     if (st.pet) { S.pet.x = st.pet.x; S.pet.y = st.pet.y; }
     S.flags.breathing = st.breathing;
   }
+  applyBubbleScale();
   // 宠物不在这块屏幕上（第一次启动或换了显示器）就放到右下角
   if (!(S.pet.x > S.work.x && S.pet.x < S.work.x + S.work.w && S.pet.y > S.work.y && S.pet.y <= S.work.y + S.work.h + 2)) {
     S.pet.x = S.work.x + S.work.w - S.pet.w * 0.8;
