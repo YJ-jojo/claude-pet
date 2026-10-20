@@ -534,6 +534,7 @@ class PetAnim {
         prevShown.media.pause();
         // 单次动作的视频先倒回开头，下次播放不用等跳转
         if (!prevShown.clip.loop) try { prevShown.media.currentTime = 0; } catch (e) { /* 忽略 */ }
+        else this._skipLoopEnd(prevShown.clip, prevShown.media);
       }
       let start = sameClip ? prevShown.start : t;
       if (atEnd && want.css === null) start = t - this._clipMs(want.clip) - 1;
@@ -614,6 +615,17 @@ class PetAnim {
   _media(clip, reverse) {
     if (!clip || clip.kind !== 'video') return null;
     return reverse && clip.rev ? clip.rev : clip.cur || clip.video;
+  }
+
+  /**
+   * 循环视频停在最后几帧时被别的动作接走（待机小动作就是在循环到头时切进去的）：
+   * 回来时从开头接，不然会先闪一下待机的最后一帧，再跳回开头，连跳两下
+   */
+  _skipLoopEnd(c, m) {
+    if (!c.alt || m === c.rev || !(m.duration > 0) || m.duration - m.currentTime > 0.1) return;
+    c.cur = m === c.video ? c.alt : c.video;
+    try { if (c.cur.currentTime > 0.001) c.cur.currentTime = 0; } catch (e) { /* 还没加载好 */ }
+    try { m.currentTime = 0; } catch (e) { /* 忽略 */ }
   }
 
   /** 循环视频播到头：换成另一个停在第一帧的视频接着播，播完的这个倒回开头备用 */
