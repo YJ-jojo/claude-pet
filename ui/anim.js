@@ -99,6 +99,9 @@ class PetAnim {
     document.body.appendChild(this.vbox);
     // 视频画到画布上还是透明时，改成直接显示视频元素（direct）
     this.direct = false;
+    // 待机呼吸由程序每帧算（不用 CSS 动画）：换到别的动作时幅度慢慢收回 1，不会一下子缩放跳一下
+    this.breath = { amp: 0, on: false, t: 0, t0: 0 };
+    for (const el of [this.canvas, this.img]) el.style.transformOrigin = '50% 100%';
     this.probe = { n: 0, done: false };
     this.onProbe = null;
     this.reset();
@@ -488,6 +491,7 @@ class PetAnim {
    */
   atLoopStart(win = 0.06) {
     const s = this.shown;
+    if (!this.shot && s && s.css === 'idle' && this.breath.on) return this._breathPhase(this.breath.t - this.breath.t0) < 0.03;
     if (this.shot || !s || !s.media) return true;
     if (!s.clip.loop) return false; // 单次动作刚播完、还停在最后一帧，等下一帧换回待机
     const m = s.media, d = m.duration;
@@ -547,7 +551,7 @@ class PetAnim {
         } catch (e) { /* 还没加载好 */ }
       }
       // 从静态图切到画布：先把图画上去，视频第一帧出来之前不会空白
-      if (want.clip.kind !== 'img' && prevShown && prevShown.clip.kind === 'img' && this.img.naturalWidth) {
+      if (!this._onImg(want.clip) && prevShown && this._onImg(prevShown.clip) && this.img.naturalWidth) {
         const W = this.canvas.width, H = this.canvas.height, dw = (this.img.naturalWidth * H) / this.img.naturalHeight;
         this.ctx.clearRect(0, 0, W, H);
         this.ctx.drawImage(this.img, (W - dw) / 2, 0, dw, H);
@@ -556,14 +560,18 @@ class PetAnim {
       if (media && !atEnd) media.play().catch(() => {});
       // 停在最后一帧的底层动作，没素材时就别再演一遍程序动画了
       const css = atEnd && want.css !== null ? 'idle' : want.css;
-      this.body.className = css ? 'st-' + css : 'has-frames';
+      const b = this.breath;
+      // 停下来以后重新开始呼吸：从原样开始吸气，不接着上次停在半截的地方
+      if (css === 'idle' && !b.on && b.amp < 0.05) b.t0 = t;
+      b.on = css === 'idle';
+      this.body.className = css && css !== 'idle' ? 'st-' + css : 'has-frames';
       const direct = this.direct && want.clip.kind === 'video';
       if (this.direct) {
         for (const c of Object.values(this.clips)) {
           for (const v of [c.video, c.alt, c.rev]) if (v) v.style.display = direct && v === media ? 'block' : 'none';
         }
       }
-      if (want.clip.kind === 'img') {
+      if (this._onImg(want.clip)) {
         this.canvas.style.display = 'none';
         this.img.style.display = 'block';
         if (this.img.getAttribute('src') !== want.clip.url) this.img.src = want.clip.url;
@@ -601,6 +609,7 @@ class PetAnim {
     }
 
     // 4. 画当前帧
+    this._breathe(t);
     this._loopSwap();
     this._draw(want.clip, t - this.shown.start, reverse, !!shot, this.shown.media);
   }
@@ -643,10 +652,14 @@ class PetAnim {
   }
 
   _draw(c, elapsed, reverse, isShot, media) {
-    if (c.kind === 'img') return;
+    if (this._onImg(c)) return;
     const W = this.canvas.width, H = this.canvas.height;
     let src = null;
-    if (c.kind === 'video') {
+    if (c.kind === 'img') {
+      // 静态图和视频画在同一块画布上：缩放、位置、边缘都一样，换动作时看不出是两层
+      if (this._lastClip === c) return;
+      src = c.el;
+    } else if (c.kind === 'video') {
       if (this.direct) return;
       src = media || c.video;
       if (src.readyState < 2) return;
@@ -672,7 +685,7 @@ class PetAnim {
     }
     if (!src) return;
     this._lastClip = c;
-    const sw = src.videoWidth || src.width, sh = src.videoHeight || src.height;
+    const sw = src.videoWidth || src.naturalWidth || src.width, sh = src.videoHeight || src.naturalHeight || src.height;
     if (!sw || !sh) return;
     const dh = H, dw = (sw * H) / sh;
     this.ctx.clearRect(0, 0, W, H);
@@ -683,7 +696,7 @@ class PetAnim {
   }
 
   _crossfade(prevShown) {
-    const p = this.prev, src = prevShown.clip.kind === 'img' ? this.img : this.canvas;
+    const p = this.prev, src = this._onImg(prevShown.clip) ? this.img : this.canvas;
     p.width = this.canvas.width;
     p.height = this.canvas.height;
     const ctx = this.pctx;
@@ -704,7 +717,27 @@ class PetAnim {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     if (this._fade) this._fade.cancel();
     this._fade = p.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 100, easing: 'linear', fill: 'forwards' });
-    if (prevShown.clip.kind !== 'img') this._lastClip = null;
+    if (!this._onImg(prevShown.clip)) this._lastClip = null;
+  }
+
+  /** 只有动图（gif / webp / apng）用 <img> 显示，它自己会动；其它都画在画布上 */
+  _onImg(c) { return c.kind === 'img' && c.animated; }
+
+  /** 呼吸进度 0（原样）→ 1（吸到最满），2.8 秒一次 */
+  _breathPhase(t) { return (1 - Math.cos((2 * Math.PI * t) / 2800)) / 2; }
+
+  /** 待机呼吸：和以前的 CSS 动画一样的幅度；开、关时幅度在 0.15 秒左右里渐变 */
+  _breathe(t) {
+    const b = this.breath, dt = Math.min(100, Math.max(0, t - (b.t || t)));
+    b.t = t;
+    b.amp += ((b.on ? 1 : 0) - b.amp) * (1 - Math.exp(-dt / 150));
+    if (!b.on && b.amp < 0.002) b.amp = 0;
+    const k = b.amp * this._breathPhase(t - b.t0);
+    const tf = k ? `translateY(${k.toFixed(3)}px) scale(${(1 + 0.012 * k).toFixed(5)}, ${(1 - 0.015 * k).toFixed(5)})` : '';
+    if (tf === b.tf) return;
+    b.tf = tf;
+    this.canvas.style.transform = tf;
+    this.img.style.transform = tf;
   }
 }
 
