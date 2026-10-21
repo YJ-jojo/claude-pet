@@ -40,7 +40,7 @@ pub fn system_line(text: &str) {
     a.emit_panel("chat", json!({"id": id, "role": "system", "mode": "new", "text": text}));
 }
 
-/// 流式讲话。返回 Claude 的完整回答（[静默] 时返回空串）
+/// 流式讲话。返回 Claude 的完整回答（[静默] 时返回空串；回答是 [操作] / [指路] 时原样返回，不显示不念）
 pub async fn talk(session: &Session, blocks: Vec<Block>, kind: &str) -> Result<String, String> {
     let a = app();
     let id = a.next_id("b");
@@ -51,6 +51,7 @@ pub async fn talk(session: &Session, blocks: Vec<Block>, kind: &str) -> Result<S
     let mut head = String::new();
     let mut decided = false;
     let mut silent = false;
+    let mut marker = String::new();
     let mut started = false;
     let mut shown = String::new();
 
@@ -86,7 +87,12 @@ pub async fn talk(session: &Session, blocks: Vec<Block>, kind: &str) -> Result<S
                 if t.starts_with('[') || t.starts_with('【') {
                     if t.contains(']') || t.contains('】') || t.chars().count() > 8 {
                         decided = true;
-                        silent = t.contains("静默");
+                        if t.contains("操作]") || t.contains("操作】") {
+                            marker = "[操作]".into();
+                        } else if t.contains("指路]") || t.contains("指路】") {
+                            marker = "[指路]".into();
+                        }
+                        silent = t.contains("静默") || !marker.is_empty();
                         if !silent {
                             let h = std::mem::take(&mut head);
                             feed(&h, &mut started, &mut shown, &mut split);
@@ -115,6 +121,9 @@ pub async fn talk(session: &Session, blocks: Vec<Block>, kind: &str) -> Result<S
             if started {
                 a.emit_stage("bubble", json!({"id": id, "mode": "done"}));
                 a.emit_panel("chat", json!({"id": id, "mode": "done"}));
+            }
+            if !marker.is_empty() {
+                return Ok(marker);
             }
             if silent || ans.interrupted && shown.is_empty() {
                 return Ok(String::new());
@@ -189,6 +198,10 @@ pub async fn look_once(question: Option<String>) {
 pub async fn chat(text: String) {
     let a = app();
     user_line(&text);
+    // 正在指路等你点，你说“你帮我点”：直接让宠物点，不用再问 Claude
+    if a.operating.load(std::sync::atomic::Ordering::SeqCst) && crate::operate::is_take_over(&text) && crate::operate::take_over() {
+        return;
+    }
     a.tts.stop();
     let cfg = a.cfg();
     let mut blocks = Vec::new();
@@ -209,7 +222,12 @@ pub async fn chat(text: String) {
             }
         }
     }
-    blocks.push(Block::Text(text));
+    blocks.push(Block::Text(text.clone()));
     a.s_chat.set_model(&cfg.chat_model);
-    let _ = talk(&a.s_chat, blocks, "talk").await;
+    // 聊天里叫它动手 / 带路：交给“手”去做，不用切到“帮我操作”那一栏
+    match talk(&a.s_chat, blocks, "talk").await.as_deref() {
+        Ok("[操作]") => crate::operate::run_quiet(text, false).await,
+        Ok("[指路]") => crate::operate::run_quiet(text, true).await,
+        _ => {}
+    }
 }

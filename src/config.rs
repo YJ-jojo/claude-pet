@@ -78,6 +78,8 @@ pub struct Config {
     pub operate_click_first: bool,
     /// 指给你看时，等你自己点多少秒
     pub point_wait_s: u64,
+    /// 帮你操作 / 指路时最多连着做几轮（每轮看一次画面、做几步）
+    pub operate_rounds: u32,
     /// 帮你操作时问你“点不点”，等多少秒没回答算不点
     pub confirm_wait_s: u64,
     /// 宠物跑动速度（像素/秒）
@@ -86,6 +88,8 @@ pub struct Config {
     pub wander: bool,
     /// 鼠标离宠物远时让宠物窗口不穿透（更省；万一宠物附近的东西点不到，关掉它）
     pub hit_relax: bool,
+    /// 说话气泡的大小（1 = 原来的大小）
+    pub bubble_scale: f64,
     /// 截图、录屏、共享屏幕时不拍进宠物。默认关：有的电脑（比如装了远程串流的虚拟显示器）开着它，宠物会直接显示成一块黑
     pub hide_from_capture: bool,
 
@@ -158,11 +162,13 @@ impl Default for Config {
             operate_confirm_all: false,
             operate_click_first: false,
             point_wait_s: 20,
+            operate_rounds: 8,
             confirm_wait_s: 30,
             run_speed: 1800.0,
             wander: false,
             hit_relax: true,
             hide_from_capture: false,
+            bubble_scale: 0.85,
             hotkey_translate: "CommandOrControl+Alt+T".into(),
             hotkey_look: "CommandOrControl+Alt+E".into(),
             hotkey_breath: "CommandOrControl+Alt+B".into(),

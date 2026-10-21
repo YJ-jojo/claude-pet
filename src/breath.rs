@@ -74,6 +74,11 @@ fn current_targets() -> Vec<WinInfo> {
     out
 }
 
+/// 没指定要看哪个窗口：跟着你当前在用的窗口走
+fn following_foreground() -> bool {
+    app().targets.lock().unwrap().iter().all(|t| !t.enabled)
+}
+
 /// 窗口的小灰度图。露在外面就直接拷屏幕（便宜）；被挡住时才让它自己画一遍（allow_slow）。
 fn thumb_of(hwnd: i64, allow_slow: bool) -> Option<(Vec<u8>, bool)> {
     if let Some(img) = platform::capture_visible(hwnd) {
@@ -161,9 +166,11 @@ async fn run(id: u64) {
         if last_target_check.elapsed() > Duration::from_secs(2) {
             last_target_check = Instant::now();
             let now_targets = current_targets();
+            // 跟着当前窗口走时，切到别的窗口只是换个地方看，不用开口讲一遍新窗口；安静模式也不讲
+            let announce = !following_foreground() && cfg.breath_mode != "quiet";
             watches.retain(|w| {
                 let keep = now_targets.iter().any(|t| t.hwnd == w.hwnd);
-                if !keep && !platform::is_window(w.hwnd) {
+                if !keep && announce && !platform::is_window(w.hwnd) {
                     talk::say(&format!("《{}》关掉了，我不看它了。", short(&w.title)), "breath");
                 }
                 keep
@@ -172,7 +179,9 @@ async fn run(id: u64) {
                 if !watches.iter().any(|w| w.hwnd == t.hwnd) {
                     let t2 = t.clone();
                     if let Some(look) = blocking(move || talk::look_at(&t2, false)).await {
-                        pending.push(json!({"new_window": snapshot::full(&t, &look.seen, 1500)}));
+                        if announce {
+                            pending.push(json!({"new_window": snapshot::full(&t, &look.seen, 1500)}));
+                        }
                         watches.push(Watch {
                             hwnd: t.hwnd,
                             title: t.title.clone(),
