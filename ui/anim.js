@@ -143,6 +143,12 @@ class PetAnim {
         loop: def.loop !== undefined ? def.loop : !!meta.loop,
         hit: def.hit,
         tip: def.tip || null,
+        // 走路片：cycle=[起, 止] 帧号之间是能首尾相接的一步一步（之前是起步，之后是收脚站稳），
+        // speed=原速播放时每秒走多少个身高，ease=[起步开始, 起步走稳, 开始收脚, 站稳] 帧号
+        range: Array.isArray(def.cycle) && def.cycle.length === 2 && def.cycle[1] > def.cycle[0] ? def.cycle.map((f) => f / fps) : null,
+        speed: def.speed > 0 ? def.speed : 0,
+        ease: Array.isArray(def.ease) && def.ease.length === 4 ? def.ease.map((f) => f / fps) : null,
+        loops: 0, stopping: false,
         w: 0, h: 0,
         ready: false,
       };
@@ -627,11 +633,12 @@ class PetAnim {
   }
 
   /**
-   * 循环视频停在最后几帧时被别的动作接走（待机小动作就是在循环到头时切进去的）：
-   * 回来时从开头接，不然会先闪一下待机的最后一帧，再跳回开头，连跳两下
+   * 循环视频被别的动作接走：下次回来从开头接。每段动作都是从这个站姿开始、回到这个站姿结束的，
+   * 接着上次停下的地方播会先跳一下（比如转身回来、眨完眼回来）。
+   * 换成停在开头备用的那个视频，不用等跳转
    */
   _skipLoopEnd(c, m) {
-    if (!c.alt || m === c.rev || !(m.duration > 0) || m.duration - m.currentTime > 0.1) return;
+    if (!c.alt || m === c.rev) return;
     c.cur = m === c.video ? c.alt : c.video;
     try { if (c.cur.currentTime > 0.001) c.cur.currentTime = 0; } catch (e) { /* 还没加载好 */ }
     try { m.currentTime = 0; } catch (e) { /* 忽略 */ }
@@ -641,14 +648,60 @@ class PetAnim {
   _loopSwap() {
     const s = this.shown, c = s && s.clip, m = s && s.media;
     if (!m || !c.alt || m === c.rev || m.paused && !m.ended) return;
-    if (!m.ended && !(m.duration > 0 && m.currentTime >= m.duration - 0.5 / c.fps)) return;
+    // 走路片在一步一步那段里循环；要收脚时不再跳回去，播到最后站稳的那一帧停住
+    const cyc = c.range && !c.stopping;
+    if (c.range && c.stopping) return;
+    const end = cyc ? c.range[1] : m.duration;
+    if (!m.ended && !(end > 0 && m.currentTime >= end - 0.5 / c.fps)) return;
+    const start = cyc ? c.range[0] : 0;
     const next = m === c.video ? c.alt : c.video;
-    try { if (next.currentTime > 0.001) next.currentTime = 0; } catch (e) { /* 还没加载好 */ }
+    try { if (Math.abs(next.currentTime - start) > 0.001) next.currentTime = start; } catch (e) { /* 还没加载好 */ }
+    next.playbackRate = m.playbackRate;
     next.play().catch(() => {});
     c.cur = s.media = next;
+    if (cyc) c.loops++;
     if (this.direct) { next.style.display = 'block'; m.style.display = 'none'; }
     m.pause();
-    try { m.currentTime = 0; } catch (e) { /* 忽略 */ }
+    try { m.currentTime = start; } catch (e) { /* 忽略 */ }
+  }
+
+  // ───────── 走路：按片子里真实的脚步算位置 ─────────
+
+  /** 这个动作能不能按脚步走（片子里标了 cycle 和 speed） */
+  canStep(id) {
+    const c = this.clips[id];
+    return !!(c && c.kind === 'video' && c.range && c.speed && c.alt && c.ready);
+  }
+
+  /** 从头开始走：两个视频都倒回去（第二个停在循环起点备用），按 rate 倍速播 */
+  stepStart(id, rate) {
+    const c = this.clips[id];
+    c.loops = 0;
+    c.stopping = false;
+    c.cur = c.video;
+    for (const v of [c.video, c.alt]) { v.pause(); v.playbackRate = rate; }
+    try { c.video.currentTime = 0; c.alt.currentTime = c.range[0]; } catch (e) { /* 还没加载好 */ }
+    if (this.shown && this.shown.clip === c) this.shown.media = c.video;
+  }
+
+  /** 走完当前这一圈就收脚站稳 */
+  stepStop(id) { const c = this.clips[id]; if (c) c.stopping = true; }
+
+  /** 走路片展开后的播放位置（秒）：第一遍从 0 算起，之后每绕一圈加一圈的长度；播完返回 null 之外的 done */
+  stepTime(id) {
+    const c = this.clips[id], m = c && (c.cur || c.video);
+    if (!m || !c.range) return { u: 0, loops: 0, done: true };
+    const [a, b] = c.range, t = m.currentTime;
+    const u = c.loops === 0 ? t : b + (c.loops - 1) * (b - a) + (t - a);
+    return { u, loops: c.loops, done: c.stopping && (m.ended || (m.duration > 0 && t >= m.duration - 0.5 / c.fps)) };
+  }
+
+  /** 走完了：速度恢复正常，下次从头开始 */
+  stepEnd(id) {
+    const c = this.clips[id];
+    if (!c) return;
+    c.stopping = false;
+    for (const v of [c.video, c.alt]) if (v) v.playbackRate = 1;
   }
 
   _draw(c, elapsed, reverse, isShot, media) {

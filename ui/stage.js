@@ -460,13 +460,57 @@ function runSpeed() {
 
 let travelSeq = 0;
 
+/** 等待机动作循环回到开头（最多等 ms 毫秒） */
+function waitLoopStart(ms) {
+  const t0 = now();
+  return new Promise((resolve) => {
+    const chk = () => (anim.atLoopStart() || now() - t0 > ms ? resolve() : requestAnimationFrame(chk));
+    chk();
+  });
+}
+
 function cancelTravel() {
   travelSeq++;
   if (S.walk) {
     const w = S.walk;
     S.walk = null;
+    if (w.steps) anim.stepEnd(w.steps.id);
     w.resolve(false);
   }
+}
+
+/**
+ * 按走路片里的脚步走：起步 → 中间那一圈绕 k 遍 → 收脚站稳，正好在站稳时走到。
+ * 宠物的位置跟着片子的播放位置走（不跟时钟），片子卡一下人也停一下，脚不会在地上滑。
+ * 返回 null 表示这个形象包的走路片没标脚步，用老办法走。
+ */
+function stepPlan(D, run) {
+  const id = 'B01';
+  if (!anim.canStep(id)) return null;
+  const c = anim.clips[id], [a, b] = c.range, L = b - a, end = c.video.duration;
+  if (!(end > b)) return null;
+  const h = S.cfg.pet_height || 240;
+  const natural = c.speed * h; // 原速时每秒走多少像素
+  // 跑：同一段走路片快放（最多 2.2 倍），太远就闪现过去，免得在地上走很久
+  const rate = run ? clamp(runSpeed() / natural, 1, 2.2) : 1;
+  const [e0, e1, e2, e3] = c.ease || [0, 0, end, end];
+  // 片子里每个时刻的走路速度（0~1）：起步慢慢加速，收脚慢慢停
+  const sp = (t) => (t < e0 ? 0 : t < e1 ? (t - e0) / Math.max(1e-3, e1 - e0) : t < e2 ? 1 : t < e3 ? 1 - (t - e2) / Math.max(1e-3, e3 - e2) : 0);
+  const dist = (t0, t1) => { let d = 0; const n = Math.max(1, Math.ceil((t1 - t0) * 120)); for (let i = 0; i < n; i++) d += sp(t0 + ((i + 0.5) * (t1 - t0)) / n); return (d * (t1 - t0)) / n; };
+  const dIn = dist(0, b), dCyc = dist(a, b), dOut = dist(b, end);
+  // 绕几圈：让按脚步算的距离和真要走的距离最接近
+  let k = Math.max(0, Math.round((D / natural - dIn - dOut) / dCyc));
+  const total = dIn + k * dCyc + dOut;
+  const scale = D / (total * natural); // >1 脚下略快，<1 略慢；只差零点几圈
+  if (scale > 1.6 || scale < 0.45) return null; // 太近：不值得迈一整段步子
+  // 展开后的播放位置 u → 已走过的比例
+  const T = end + k * L;
+  if (run && T / rate > 3) return { far: true };
+  const N = Math.ceil(T * 60), cum = new Float32Array(N + 1);
+  const orig = (u) => (u < b || k === 0 ? u : u < b + k * L ? a + ((u - b) % L) : u - k * L);
+  for (let i = 1; i <= N; i++) cum[i] = cum[i - 1] + sp(orig(((i - 0.5) * T) / N)) * (T / N);
+  const frac = (u) => { const x = clamp(u / T, 0, 1) * N, i = Math.floor(x); return i >= N ? 1 : (cum[i] + (cum[i + 1] - cum[i]) * (x - i)) / cum[N]; };
+  return { id, rate, k, T, frac };
 }
 
 /**
@@ -489,8 +533,9 @@ async function travel(x, y, o = {}) {
   if (D < 3) return finish();
   if (Math.abs(x - sx) > 4) setFace(x > sx ? 1 : -1);
 
+  let steps = stepPlan(D, run);
   // 远距离或紧急：闪现（缩成一团消失 → 在目标处弹出来），不到半秒
-  if (run && (D > 1500 || (o.urgent && D > 500))) {
+  if (run && (D > 1500 || (o.urgent && D > 500) || (steps && steps.far))) {
     await anim.play('B09', { turn: false });
     if (my !== travelSeq) return false;
     S.pet.x = x;
@@ -499,15 +544,21 @@ async function travel(x, y, o = {}) {
     await anim.play('B10', { turn: false });
     return my === travelSeq ? finish() : false;
   }
-  // 正面 → 侧面：先转身（太近就不转了）
+  // 正面 → 侧面：先转身（太近就不转了）。慢慢走的时候等待机循环回到开头再转，转身片是从这个姿势开始的
   if (D > 80 && anim.pose !== 'side' && anim.has('B03')) {
+    if (!run) await waitLoopStart(2800);
+    if (my !== travelSeq) return false;
     await anim.play('B03', { turnTo: 'side' });
     if (my !== travelSeq) return false;
   }
 
   const air = run && Math.abs(y - sy) > S.pet.h * 0.8 && anim.has('B06');
+  if (air || (run && anim.has('B02'))) steps = null; // 有跑步片 / 要跳：用跑步那一套
   let T, pos, skidAt = null;
-  if (!run) {
+  if (steps) {
+    T = steps.T / steps.rate + 5; // 只是保险：片子卡死了也会走完
+    pos = () => 0;
+  } else if (!run) {
     T = clamp(D / 90, 0.5, 12);
     pos = (el) => D * clamp(el / T, 0, 1);
   } else {
@@ -531,10 +582,11 @@ async function travel(x, y, o = {}) {
     if (!air) skidAt = ta + tc;
   }
   anim.interrupt(); // 正在播的小动作让位给跑步
+  if (steps) anim.stepStart(steps.id, steps.rate);
   const ok = await new Promise((resolve) => {
     S.walk = {
-      sx, sy, x, y, D, T, pos, skidAt, air, mode: run ? 'run' : 'walk',
-      hop: run && !air && !anim.has('B02'),
+      sx, sy, x, y, D, T, pos, skidAt, air, steps, mode: steps || !run ? 'walk' : 'run',
+      hop: run && !air && !steps && !anim.has('B02'),
       skidding: false, t0: now(), resolve,
     };
   });
@@ -547,14 +599,23 @@ function stepWalk(t) {
   const w = S.walk;
   if (!w) return;
   const el = (t - w.t0) / 1000;
-  const f = w.D ? clamp(w.pos(el) / w.D, 0, 1) : 1;
+  let f, arrived = el >= w.T;
+  if (w.steps) {
+    const st = anim.stepTime(w.steps.id);
+    if (st.loops >= w.steps.k) anim.stepStop(w.steps.id);
+    f = st.done ? 1 : w.steps.frac(st.u);
+    if (st.done) arrived = true;
+  } else f = w.D ? clamp(w.pos(el) / w.D, 0, 1) : 1;
   S.pet.x = w.sx + (w.x - w.sx) * f;
   S.pet.y = w.sy + (w.y - w.sy) * f;
   // 占位形象没有跑步动作：跑的时候带一点弧线，看着像蹦过去
   if (w.hop) S.pet.y -= Math.sin(f * Math.PI) * Math.min(50, w.D * 0.08);
   if (w.skidAt !== null && !w.skidding && el >= w.skidAt) w.skidding = true;
-  if (el >= w.T) {
+  if (arrived) {
+    S.pet.x = w.x;
+    S.pet.y = w.y;
     S.walk = null;
+    if (w.steps) anim.stepEnd(w.steps.id);
     w.resolve(true);
   }
 }
